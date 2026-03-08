@@ -51,6 +51,15 @@ def get_audio_duration(audio_path: str) -> float:
         return 5.0
 
 
+def escape_ffmpeg_text(text: str) -> str:
+    return (
+        text.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", r"\'")
+        .replace("%", r"\%")
+    )
+
+
 def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regla: str) -> str:
     font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
 
@@ -62,20 +71,19 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
 
     duration_per_chunk = audio_duration / max(len(chunks), 1)
 
-    title_text = f"REGLA INVISIBLE #{numero_regla}"
-    title_text = title_text.replace("\\", "\\\\").replace(":", "\\:").replace("'", r"\'")
+    title_text = escape_ffmpeg_text(f"REGLAS INVISIBLES #{numero_regla}")
 
     filters = [
         (
             f"drawtext="
             f"fontfile='{font_path}':"
             f"text='{title_text}':"
-            f"fontsize=64:"
+            f"fontsize=68:"
             f"fontcolor=white:"
             f"borderw=6:"
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.12"
+            f"y=h*0.10"
         )
     ]
 
@@ -83,7 +91,7 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
         start = round(i * duration_per_chunk, 3)
         end = round(start + duration_per_chunk, 3)
 
-        txt = chunk.replace("\\", "\\\\").replace(":", "\\:").replace("'", r"\'")
+        txt = escape_ffmpeg_text(chunk)
 
         draw = (
             f"drawtext="
@@ -111,7 +119,7 @@ def health():
 async def render_video(
     numero_regla: str = Form(...),
     guion: str = Form(...),
-    subtitles_mode: str = Form("static"),
+    subtitles_mode: str = Form("dynamic"),
     audio_file: UploadFile = File(...)
 ):
     job_id = str(uuid.uuid4())
@@ -137,22 +145,20 @@ async def render_video(
         chunks = chunk_text(guion, words_per_chunk=3)
         drawtext_filters = build_drawtext_filters(chunks, audio_duration, numero_regla)
     else:
-        title_text = f"REGLA INVISIBLE #{numero_regla}"
-        title_text = title_text.replace("\\", "\\\\").replace(":", "\\:").replace("'", r"\'")
-        body_text = guion.replace("\n", " ").replace("\r", " ").upper()
-        body_text = body_text.replace("\\", "\\\\").replace(":", "\\:").replace("'", r"\'")
+        title_text = escape_ffmpeg_text(f"REGLAS INVISIBLES #{numero_regla}")
+        body_text = escape_ffmpeg_text(guion.replace("\n", " ").replace("\r", " ").upper())
 
         drawtext_filters = ",".join([
             (
                 f"drawtext="
                 f"fontfile='{font_path}':"
                 f"text='{title_text}':"
-                f"fontsize=64:"
+                f"fontsize=68:"
                 f"fontcolor=white:"
                 f"borderw=6:"
                 f"bordercolor=black:"
                 f"x=(w-text_w)/2:"
-                f"y=h*0.12"
+                f"y=h*0.10"
             ),
             (
                 f"drawtext="
@@ -184,10 +190,16 @@ async def render_video(
         "1:a:0",
         "-c:v",
         "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "23",
         "-c:a",
         "aac",
         "-b:a",
         "192k",
+        "-ar",
+        "44100",
         "-pix_fmt",
         "yuv420p",
         "-movflags",
@@ -208,4 +220,4 @@ async def render_video(
         "ok": True,
         "video_url": f"/video/{job_id}.mp4",
         "subtitles_mode_received": subtitles_mode
-    }    
+    }
