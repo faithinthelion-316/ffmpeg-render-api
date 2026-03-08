@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(_file_))
 AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
@@ -32,17 +32,15 @@ def escape_ffmpeg_text(text: str) -> str:
 def chunk_text(text: str, words_per_chunk: int = 4) -> List[str]:
     words = text.replace("\n", " ").replace("\r", " ").split()
     chunks = []
-
     for i in range(0, len(words), words_per_chunk):
         chunk = " ".join(words[i:i + words_per_chunk]).strip()
         if chunk:
             chunks.append(chunk.upper())
-
     return chunks
 
 
 def get_audio_duration(audio_path: str) -> float:
-    cmds = [
+    probes = [
         [
             "ffprobe",
             "-v", "error",
@@ -59,18 +57,19 @@ def get_audio_duration(audio_path: str) -> float:
         ],
     ]
 
-    for cmd in cmds:
+    for cmd in probes:
         result = subprocess.run(cmd, capture_output=True, text=True)
-        value = result.stdout.strip().splitlines()
-        if value:
-            try:
-                duration = float(value[0])
-                if duration > 0:
-                    return duration
-            except Exception:
-                pass
+        raw = result.stdout.strip()
+        if raw:
+            for line in raw.splitlines():
+                try:
+                    value = float(line.strip())
+                    if value > 0.5:
+                        return value
+                except Exception:
+                    pass
 
-    return 5.0
+    return 8.0
 
 
 def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regla: str) -> str:
@@ -79,36 +78,36 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
     if not os.path.exists(font_path):
         raise HTTPException(
             status_code=500,
-            detail="No se encontró la fuente BebasNeue-Regular.ttf en la carpeta fonts"
+            detail="No se encontró la fuente BebasNeue-Regular.ttf en fonts"
         )
 
     duration_per_chunk = audio_duration / max(len(chunks), 1)
 
-    title_left = escape_ffmpeg_text("REGLAS INVISIBLES")
-    title_right = escape_ffmpeg_text(f"#{numero_regla}")
+    title_main = escape_ffmpeg_text("REGLAS INVISIBLES")
+    title_num = escape_ffmpeg_text(f"#{numero_regla}")
 
     filters = [
         (
             f"drawtext="
             f"fontfile='{font_path}':"
-            f"text='{title_left}':"
-            f"fontsize=68:"
+            f"text='{title_main}':"
+            f"fontsize=64:"
             f"fontcolor=white:"
             f"borderw=6:"
             f"bordercolor=black:"
-            f"x=(w/2)-260:"
-            f"y=h*0.10"
+            f"x=(w-text_w)/2:"
+            f"y=h*0.09"
         ),
         (
             f"drawtext="
             f"fontfile='{font_path}':"
-            f"text='{title_right}':"
-            f"fontsize=68:"
+            f"text='{title_num}':"
+            f"fontsize=58:"
             f"fontcolor=0x8B0000:"
             f"borderw=6:"
             f"bordercolor=black:"
-            f"x=(w/2)+120:"
-            f"y=h*0.10"
+            f"x=(w-text_w)/2:"
+            f"y=h*0.15"
         )
     ]
 
@@ -118,18 +117,16 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
         txt = escape_ffmpeg_text(chunk)
 
         filters.append(
-            (
-                f"drawtext="
-                f"fontfile='{font_path}':"
-                f"text='{txt}':"
-                f"fontsize=78:"
-                f"fontcolor=white:"
-                f"borderw=8:"
-                f"bordercolor=black:"
-                f"x=(w-text_w)/2:"
-                f"y=(h-text_h)/2:"
-                f"enable='between(t,{start},{end})'"
-            )
+            f"drawtext="
+            f"fontfile='{font_path}':"
+            f"text='{txt}':"
+            f"fontsize=78:"
+            f"fontcolor=white:"
+            f"borderw=8:"
+            f"bordercolor=black:"
+            f"x=(w-text_w)/2:"
+            f"y=(h-text_h)/2:"
+            f"enable='between(t,{start},{end})'"
         )
 
     return ",".join(filters)
@@ -149,53 +146,78 @@ async def render_video(
 ):
     job_id = str(uuid.uuid4())
 
-    audio_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
+    original_name = audio_file.filename or "audio.mp3"
+    ext = os.path.splitext(original_name)[1].lower()
+    if ext not in [".mp3", ".mpeg", ".wav", ".m4a", ".aac", ".ogg"]:
+        ext = ".mp3"
+
+    input_audio_path = os.path.join(AUDIO_DIR, f"{job_id}{ext}")
+    normalized_audio_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
     video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
 
     audio_bytes = await audio_file.read()
-    with open(audio_path, "wb") as f:
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="audio_file llegó vacío")
+
+    with open(input_audio_path, "wb") as f:
         f.write(audio_bytes)
 
-    audio_duration = get_audio_duration(audio_path)
-    audio_duration = round(audio_duration, 3)
+    # Normaliza el audio a mp3 decodificable por ffmpeg
+    normalize_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", input_audio_path,
+        "-vn",
+        "-acodec", "libmp3lame",
+        "-ar", "44100",
+        "-ac", "2",
+        "-b:a", "192k",
+        normalized_audio_path
+    ]
+
+    normalize_result = subprocess.run(normalize_cmd, capture_output=True, text=True)
+    if normalize_result.returncode != 0:
+        raise HTTPException(status_code=500, detail=normalize_result.stderr)
+
+    audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
     font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
     if not os.path.exists(font_path):
         raise HTTPException(
             status_code=500,
-            detail="No se encontró la fuente BebasNeue-Regular.ttf en la carpeta fonts"
+            detail="No se encontró la fuente BebasNeue-Regular.ttf en fonts"
         )
 
     if subtitles_mode == "dynamic":
         chunks = chunk_text(guion, words_per_chunk=4)
         drawtext_filters = build_drawtext_filters(chunks, audio_duration, numero_regla)
     else:
-        title_left = escape_ffmpeg_text("REGLAS INVISIBLES")
-        title_right = escape_ffmpeg_text(f"#{numero_regla}")
+        title_main = escape_ffmpeg_text("REGLAS INVISIBLES")
+        title_num = escape_ffmpeg_text(f"#{numero_regla}")
         body_text = escape_ffmpeg_text(guion.replace("\n", " ").replace("\r", " ").upper())
 
         drawtext_filters = ",".join([
             (
                 f"drawtext="
                 f"fontfile='{font_path}':"
-                f"text='{title_left}':"
-                f"fontsize=68:"
+                f"text='{title_main}':"
+                f"fontsize=64:"
                 f"fontcolor=white:"
                 f"borderw=6:"
                 f"bordercolor=black:"
-                f"x=(w/2)-260:"
-                f"y=h*0.10"
+                f"x=(w-text_w)/2:"
+                f"y=h*0.09"
             ),
             (
                 f"drawtext="
                 f"fontfile='{font_path}':"
-                f"text='{title_right}':"
-                f"fontsize=68:"
+                f"text='{title_num}':"
+                f"fontsize=58:"
                 f"fontcolor=0x8B0000:"
                 f"borderw=6:"
                 f"bordercolor=black:"
-                f"x=(w/2)+120:"
-                f"y=h*0.10"
+                f"x=(w-text_w)/2:"
+                f"y=h*0.15"
             ),
             (
                 f"drawtext="
@@ -215,12 +237,10 @@ async def render_video(
         "-y",
         "-f", "lavfi",
         "-i", f"color=c=black:s=1080x1920:r=30:d={audio_duration}",
-        "-i", audio_path,
+        "-i", normalized_audio_path,
         "-vf", drawtext_filters,
         "-map", "0:v:0",
         "-map", "1:a:0",
-        "-t", str(audio_duration),
-        "-r", "30",
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "20",
@@ -229,7 +249,8 @@ async def render_video(
         "-ar", "44100",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
-        video_path,
+        "-shortest",
+        video_path
     ]
 
     result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
@@ -244,5 +265,7 @@ async def render_video(
         "ok": True,
         "video_url": f"/video/{job_id}.mp4",
         "subtitles_mode_received": subtitles_mode,
-        "audio_duration": audio_duration
+        "audio_duration": audio_duration,
+        "audio_bytes_received": len(audio_bytes),
+        "original_filename": original_name
     }
