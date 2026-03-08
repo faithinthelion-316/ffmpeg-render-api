@@ -1,19 +1,94 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
-import subprocess
-import uuid
 import os
-import textwrap
-import shutil
+import uuid
+import subprocess
+from typing import List
+
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-OUTPUT_DIR = "outputs"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# Carpetas
+BASE_DIR = os.path.dirname(os.path.abspath(_file_))
+AUDIO_DIR = os.path.join(BASE_DIR, "audio")
+VIDEO_DIR = os.path.join(BASE_DIR, "video")
+FONTS_DIR = os.path.join(BASE_DIR, "fonts")
 
-@app.get("/")
-def root():
-    return {"status": "running"}
+os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(VIDEO_DIR, exist_ok=True)
+
+# Servir los videos
+app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
+
+
+def chunk_text(text: str, words_per_chunk: int = 5) -> List[str]:
+    """
+    Divide el texto en frases cortas de N palabras
+    para subtítulos dinámicos.
+    """
+    words = text.replace("\n", " ").split()
+    chunks = []
+    for i in range(0, len(words), words_per_chunk):
+        chunk = " ".join(words[i:i + words_per_chunk])
+        chunks.append(chunk.upper())
+    return chunks
+
+
+def build_drawtext_filters(chunks: List[str], audio_duration: float) -> str:
+    """
+    Genera los filtros drawtext con timing.
+    """
+    font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
+
+    duration_per_chunk = audio_duration / max(len(chunks), 1)
+
+    filters = []
+    for i, chunk in enumerate(chunks):
+        start = i * duration_per_chunk
+        end = start + duration_per_chunk
+
+        txt = chunk.replace(":", "\\:").replace("'", "\\'")
+
+        draw = (
+            f"drawtext=fontfile={font_path}:"
+            f"text='{txt}':"
+            f"fontsize=90:"
+            f"fontcolor=white:"
+            f"borderw=8:"
+            f"bordercolor=black:"
+            f"x=(w-text_w)/2:"
+            f"y=h*0.75:"
+            f"enable='between(t,{start},{end})'"
+        )
+
+        filters.append(draw)
+
+    return ",".join(filters)
+
+
+def get_audio_duration(audio_path: str) -> float:
+    """
+    Obtiene duración del audio usando ffprobe.
+    """
+    cmd = [
+        "ffprobe",
+        "-i",
+        audio_path,
+        "-show_entries",
+        "format=duration",
+        "-v",
+        "quiet",
+        "-of",
+        "csv=p=0"
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        return float(result.stdout.strip())
+    except:
+        return 5.0
+
 
 @app.post("/render")
 async def render_video(
@@ -21,56 +96,67 @@ async def render_video(
     guion: str = Form(...),
     subtitles_mode: str = Form("static"),
     audio_file: UploadFile = File(...)
-):  
+):
+
     job_id = str(uuid.uuid4())
-    audio_path = os.path.join(OUTPUT_DIR, f"{job_id}.mp3")
-    video_path = os.path.join(OUTPUT_DIR, f"{job_id}.mp4")
-    text_path = os.path.join(OUTPUT_DIR, f"{job_id}.txt")
 
-    with open(audio_path, "wb") as buffer:
-        shutil.copyfileobj(audio_file.file, buffer)
+    audio_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
+    video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
 
-    wrapped = textwrap.fill(guion, width=28)
-    with open(text_path, "w", encoding="utf-8") as f:
-        f.write(wrapped)
+    # guardar audio
+    with open(audio_path, "wb") as f:
+        f.write(await audio_file.read())
 
-    cmd = [
+    audio_duration = get_audio_duration(audio_path)
+
+    # fondo negro vertical
+    base_video = f"color=c=black:s=1080x1920:d={audio_duration}"
+
+    if subtitles_mode == "dynamic":
+        chunks = chunk_text(guion)
+        drawtext_filters = build_drawtext_filters(chunks, audio_duration)
+    else:
+        font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
+        txt = guion.replace(":", "\\:").replace("'", "\\'")
+        drawtext_filters = (
+            f"drawtext=fontfile={font_path}:"
+            f"text='{txt}':"
+            f"fontsize=90:"
+            f"fontcolor=white:"
+            f"borderw=8:"
+            f"bordercolor=black:"
+            f"x=(w-text_w)/2:"
+            f"y=h*0.75"
+        )
+
+    ffmpeg_cmd = [
         "ffmpeg",
         "-y",
-        "-f", "lavfi",
-        "-i", "color=c=black:s=1080x1920:r=30",
-        "-i", audio_path,
+        "-f",
+        "lavfi",
+        "-i",
+        base_video,
+        "-i",
+        audio_path,
         "-vf",
-        (
-            "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            "text='REGLA INVISIBLE':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=220,"
-            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            f"text='#{numero_regla}':fontcolor=red:fontsize=72:x=(w-text_w)/2:y=310,"
-            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            f"textfile='{text_path}':fontcolor=white:fontsize=52:line_spacing=18:"
-            "x=(w-text_w)/2:y=(h-text_h)/2"
-        ),
+        drawtext_filters,
         "-shortest",
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
         video_path
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise HTTPException(status_code=500, detail=result.stderr)
+    subprocess.run(ffmpeg_cmd)
 
     return {
         "ok": True,
-        "video_url": f"/video/{job_id}"
+        "video_url": f"/video/{job_id}.mp4",
         "subtitles_mode_received": subtitles_mode
     }
 
-@app.get("/video/{job_id}")
-def get_video(job_id: str):
-    video_path = os.path.join(OUTPUT_DIR, f"{job_id}.mp4")
-    if not os.path.exists(video_path):
-        raise HTTPException(status_code=404, detail="Video no encontrado")
-    return FileResponse(video_path, media_type="video/mp4", filename=f"{job_id}.mp4")
+
+@app.get("/")
+def health():
+    return {"status": "running"}
