@@ -1,18 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 import subprocess
 import uuid
 import os
 import textwrap
-import requests
+import shutil
 
 app = FastAPI()
-
-class RenderRequest(BaseModel):
-    numero_regla: str
-    guion: str
-    audio_url: str
 
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -22,20 +16,20 @@ def root():
     return {"status": "running"}
 
 @app.post("/render")
-def render_video(data: RenderRequest):
+async def render_video(
+    numero_regla: str = Form(...),
+    guion: str = Form(...),
+    audio_file: UploadFile = File(...)
+):
     job_id = str(uuid.uuid4())
     audio_path = os.path.join(OUTPUT_DIR, f"{job_id}.mp3")
     video_path = os.path.join(OUTPUT_DIR, f"{job_id}.mp4")
     text_path = os.path.join(OUTPUT_DIR, f"{job_id}.txt")
 
-    r = requests.get(data.audio_url, timeout=60)
-    if r.status_code != 200:
-        raise HTTPException(status_code=400, detail="No se pudo descargar el audio")
+    with open(audio_path, "wb") as buffer:
+        shutil.copyfileobj(audio_file.file, buffer)
 
-    with open(audio_path, "wb") as f:
-        f.write(r.content)
-
-    wrapped = textwrap.fill(data.guion, width=28)
+    wrapped = textwrap.fill(guion, width=28)
     with open(text_path, "w", encoding="utf-8") as f:
         f.write(wrapped)
 
@@ -50,7 +44,7 @@ def render_video(data: RenderRequest):
             "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
             "text='REGLA INVISIBLE':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=220,"
             f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            f"text='#{data.numero_regla}':fontcolor=red:fontsize=72:x=(w-text_w)/2:y=310,"
+            f"text='#{numero_regla}':fontcolor=red:fontsize=72:x=(w-text_w)/2:y=310,"
             f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
             f"textfile='{text_path}':fontcolor=white:fontsize=52:line_spacing=18:"
             "x=(w-text_w)/2:y=(h-text_h)/2"
