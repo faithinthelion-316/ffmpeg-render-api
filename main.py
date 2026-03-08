@@ -1,6 +1,7 @@
 import os
 import uuid
 import subprocess
+import traceback
 from typing import List
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -84,7 +85,7 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
     if not os.path.exists(font_path):
         raise HTTPException(
             status_code=500,
-            detail="No se encontró la fuente BebasNeue-Regular.ttf en fonts"
+            detail=f"No se encontró la fuente en: {font_path}"
         )
 
     duration_per_chunk = audio_duration / max(len(chunks), 1)
@@ -150,127 +151,170 @@ async def render_video(
     subtitles_mode: str = Form("dynamic"),
     audio_file: UploadFile = File(...)
 ):
-    job_id = str(uuid.uuid4())
+    try:
+        print("=== /render START ===")
+        print("numero_regla:", numero_regla)
+        print("subtitles_mode:", subtitles_mode)
+        print("guion length:", len(guion) if guion else 0)
 
-    original_name = audio_file.filename or "audio.mp3"
-    ext = os.path.splitext(original_name)[1].lower()
-    if ext not in [".mp3", ".mpeg", ".wav", ".m4a", ".aac", ".ogg"]:
-        ext = ".mp3"
+        job_id = str(uuid.uuid4())
 
-    input_audio_path = os.path.join(AUDIO_DIR, f"{job_id}{ext}")
-    normalized_audio_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
-    video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
+        original_name = audio_file.filename or "audio.mp3"
+        ext = os.path.splitext(original_name)[1].lower()
+        if ext not in [".mp3", ".mpeg", ".wav", ".m4a", ".aac", ".ogg"]:
+            ext = ".mp3"
 
-    audio_bytes = await audio_file.read()
-    if not audio_bytes:
-        raise HTTPException(status_code=400, detail="audio_file llegó vacío")
+        input_audio_path = os.path.join(AUDIO_DIR, f"{job_id}{ext}")
+        normalized_audio_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
+        video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
 
-    with open(input_audio_path, "wb") as f:
-        f.write(audio_bytes)
+        audio_bytes = await audio_file.read()
+        print("audio filename:", original_name)
+        print("audio bytes received:", len(audio_bytes) if audio_bytes else 0)
 
-    normalize_cmd = [
-        "ffmpeg",
-        "-y",
-        "-i", input_audio_path,
-        "-vn",
-        "-acodec", "libmp3lame",
-        "-ar", "44100",
-        "-ac", "2",
-        "-b:a", "192k",
-        normalized_audio_path
-    ]
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="audio_file llegó vacío")
 
-    normalize_result = subprocess.run(normalize_cmd, capture_output=True, text=True)
-    if normalize_result.returncode != 0:
-        raise HTTPException(status_code=500, detail=normalize_result.stderr)
+        with open(input_audio_path, "wb") as f:
+            f.write(audio_bytes)
 
-    audio_duration = round(get_audio_duration(normalized_audio_path), 3)
+        print("input_audio_path:", input_audio_path)
+        print("normalized_audio_path:", normalized_audio_path)
+        print("video_path:", video_path)
 
-    font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
-    if not os.path.exists(font_path):
-        raise HTTPException(
-            status_code=500,
-            detail="No se encontró la fuente BebasNeue-Regular.ttf en fonts"
-        )
+        normalize_cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", input_audio_path,
+            "-vn",
+            "-acodec", "libmp3lame",
+            "-ar", "44100",
+            "-ac", "2",
+            "-b:a", "192k",
+            normalized_audio_path
+        ]
 
-    if subtitles_mode == "dynamic":
-        chunks = chunk_text(guion, words_per_chunk=4)
-        drawtext_filters = build_drawtext_filters(chunks, audio_duration, numero_regla)
-    else:
-        title_main = escape_ffmpeg_text("REGLAS INVISIBLES")
-        title_num = escape_ffmpeg_text(f"#{numero_regla}")
-        body_text = escape_ffmpeg_text(guion.upper())
+        print("normalize_cmd:", " ".join(normalize_cmd))
+        normalize_result = subprocess.run(normalize_cmd, capture_output=True, text=True)
 
-        drawtext_filters = ",".join([
-            (
-                f"drawtext="
-                f"fontfile='{font_path}':"
-                f"text='{title_main}':"
-                f"fontsize=64:"
-                f"fontcolor=white:"
-                f"borderw=6:"
-                f"bordercolor=black:"
-                f"x=(w-text_w)/2:"
-                f"y=h*0.09"
-            ),
-            (
-                f"drawtext="
-                f"fontfile='{font_path}':"
-                f"text='{title_num}':"
-                f"fontsize=58:"
-                f"fontcolor=0x8B0000:"
-                f"borderw=6:"
-                f"bordercolor=black:"
-                f"x=(w-text_w)/2:"
-                f"y=h*0.15"
-            ),
-            (
-                f"drawtext="
-                f"fontfile='{font_path}':"
-                f"text='{body_text}':"
-                f"fontsize=78:"
-                f"fontcolor=white:"
-                f"borderw=8:"
-                f"bordercolor=black:"
-                f"x=(w-text_w)/2:"
-                f"y=(h-text_h)/2"
+        print("normalize returncode:", normalize_result.returncode)
+        print("normalize stdout:", normalize_result.stdout[-2000:] if normalize_result.stdout else "")
+        print("normalize stderr:", normalize_result.stderr[-4000:] if normalize_result.stderr else "")
+
+        if normalize_result.returncode != 0:
+            raise HTTPException(status_code=500, detail=normalize_result.stderr[-3000:])
+
+        audio_duration = round(get_audio_duration(normalized_audio_path), 3)
+        print("audio_duration:", audio_duration)
+
+        font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
+        print("font_path:", font_path)
+        print("font exists:", os.path.exists(font_path))
+
+        if not os.path.exists(font_path):
+            raise HTTPException(
+                status_code=500,
+                detail=f"No se encontró la fuente BebasNeue-Regular.ttf en: {font_path}"
             )
-        ])
 
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-y",
-        "-f", "lavfi",
-        "-i", f"color=c=black:s=1080x1920:r=30:d={audio_duration}",
-        "-i", normalized_audio_path,
-        "-vf", drawtext_filters,
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "20",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-ar", "44100",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-shortest",
-        video_path
-    ]
+        if subtitles_mode == "dynamic":
+            chunks = chunk_text(guion, words_per_chunk=4)
+            print("chunks count:", len(chunks))
+            print("first chunks:", chunks[:5])
+            drawtext_filters = build_drawtext_filters(chunks, audio_duration, numero_regla)
+        else:
+            title_main = escape_ffmpeg_text("REGLAS INVISIBLES")
+            title_num = escape_ffmpeg_text(f"#{numero_regla}")
+            body_text = escape_ffmpeg_text(guion.upper())
 
-    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            drawtext_filters = ",".join([
+                (
+                    f"drawtext="
+                    f"fontfile='{font_path}':"
+                    f"text='{title_main}':"
+                    f"fontsize=64:"
+                    f"fontcolor=white:"
+                    f"borderw=6:"
+                    f"bordercolor=black:"
+                    f"x=(w-text_w)/2:"
+                    f"y=h*0.09"
+                ),
+                (
+                    f"drawtext="
+                    f"fontfile='{font_path}':"
+                    f"text='{title_num}':"
+                    f"fontsize=58:"
+                    f"fontcolor=0x8B0000:"
+                    f"borderw=6:"
+                    f"bordercolor=black:"
+                    f"x=(w-text_w)/2:"
+                    f"y=h*0.15"
+                ),
+                (
+                    f"drawtext="
+                    f"fontfile='{font_path}':"
+                    f"text='{body_text}':"
+                    f"fontsize=78:"
+                    f"fontcolor=white:"
+                    f"borderw=8:"
+                    f"bordercolor=black:"
+                    f"x=(w-text_w)/2:"
+                    f"y=(h-text_h)/2"
+                )
+            ])
 
-    if result.returncode != 0:
-        raise HTTPException(status_code=500, detail=result.stderr)
+        print("drawtext length:", len(drawtext_filters))
+        print("drawtext preview:", drawtext_filters[:1500])
 
-    if not os.path.exists(video_path):
-        raise HTTPException(status_code=500, detail="El video no se generó")
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f", "lavfi",
+            "-i", f"color=c=black:s=1080x1920:r=30:d={audio_duration}",
+            "-i", normalized_audio_path,
+            "-vf", drawtext_filters,
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "20",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-ar", "44100",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-shortest",
+            video_path
+        ]
 
-    return {
-        "ok": True,
-        "video_url": f"/video/{job_id}.mp4",
-        "subtitles_mode_received": subtitles_mode,
-        "audio_duration": audio_duration,
-        "audio_bytes_received": len(audio_bytes),
-        "original_filename": original_name
-    }
+        print("ffmpeg_cmd:", " ".join(ffmpeg_cmd))
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+
+        print("render returncode:", result.returncode)
+        print("render stdout:", result.stdout[-2000:] if result.stdout else "")
+        print("render stderr:", result.stderr[-4000:] if result.stderr else "")
+
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=result.stderr[-3000:])
+
+        if not os.path.exists(video_path):
+            raise HTTPException(status_code=500, detail="El video no se generó")
+
+        print("=== /render OK ===")
+
+        return {
+            "ok": True,
+            "video_url": f"/video/{job_id}.mp4",
+            "subtitles_mode_received": subtitles_mode,
+            "audio_duration": audio_duration,
+            "audio_bytes_received": len(audio_bytes),
+            "original_filename": original_name
+        }
+
+    except HTTPException as e:
+        print("HTTPException detail:", e.detail)
+        raise e
+    except Exception as e:
+        print("UNEXPECTED ERROR:", str(e))
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
