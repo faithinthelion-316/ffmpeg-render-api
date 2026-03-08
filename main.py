@@ -19,8 +19,9 @@ def root():
 async def render_video(
     numero_regla: str = Form(...),
     guion: str = Form(...),
+    subtitles_mode: str = Form("static"),
     audio_file: UploadFile = File(...)
-):
+):  
     job_id = str(uuid.uuid4())
     audio_path = os.path.join(OUTPUT_DIR, f"{job_id}.mp3")
     video_path = os.path.join(OUTPUT_DIR, f"{job_id}.mp4")
@@ -64,6 +65,7 @@ async def render_video(
     return {
         "ok": True,
         "video_url": f"/video/{job_id}"
+        "subtitles_mode_received": subtitles_mode
     }
 
 @app.get("/video/{job_id}")
