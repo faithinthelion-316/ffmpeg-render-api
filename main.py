@@ -9,10 +9,11 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-AUDIO_DIR = os.path.join(BASE_DIR, "audio")
-VIDEO_DIR = os.path.join(BASE_DIR, "video")
-FONTS_DIR = os.path.join(BASE_DIR, "fonts")
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+WORK_DIR = "/tmp/ffmpeg_render"
+AUDIO_DIR = os.path.join(WORK_DIR, "audio")
+VIDEO_DIR = os.path.join(WORK_DIR, "video")
+FONTS_DIR = os.path.join(APP_DIR, "fonts")
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
@@ -177,11 +178,18 @@ async def render_video(
 
         with open(input_audio_path, "wb") as f:
             f.write(audio_bytes)
+        if not os.path.exists(input_audio_path):
+            raise HTTPEception(status_code=500, detail=f"No se pudo guardar el audio en {input_audio_path}")
 
+        print("APP_DIR:", APP_DIR)
+        print("WORK_DIR:", WORK_DIR)
+        print("AUDIO_DIR:", AUDIO_DIR)
+        print("VIDEO_DIR:", VIDEO_DIR)
+        print("FONTS_DIR:", FONTS_DIR)
         print("input_audio_path:", input_audio_path)
         print("normalized_audio_path:", normalized_audio_path)
         print("video_path:", video_path)
-
+        
         normalize_cmd = [
             "ffmpeg",
             "-y",
