@@ -23,9 +23,15 @@ app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 def escape_ffmpeg_text(text: str) -> str:
     return (
         text.replace("\\", "\\\\")
-        .replace(":", "\\:")
+        .replace(":", r"\:")
         .replace("'", r"\'")
         .replace("%", r"\%")
+        .replace(",", r"\,")
+        .replace("[", r"\[")
+        .replace("]", r"\]")
+        .replace(";", r"\;")
+        .replace("\n", " ")
+        .replace("\r", " ")
     )
 
 
@@ -162,7 +168,6 @@ async def render_video(
     with open(input_audio_path, "wb") as f:
         f.write(audio_bytes)
 
-    # Normaliza el audio a mp3 decodificable por ffmpeg
     normalize_cmd = [
         "ffmpeg",
         "-y",
@@ -194,7 +199,7 @@ async def render_video(
     else:
         title_main = escape_ffmpeg_text("REGLAS INVISIBLES")
         title_num = escape_ffmpeg_text(f"#{numero_regla}")
-        body_text = escape_ffmpeg_text(guion.replace("\n", " ").replace("\r", " ").upper())
+        body_text = escape_ffmpeg_text(guion.upper())
 
         drawtext_filters = ",".join([
             (
@@ -228,7 +233,7 @@ async def render_video(
                 f"borderw=8:"
                 f"bordercolor=black:"
                 f"x=(w-text_w)/2:"
-                f"y=(h-text_h)/2:"
+                f"y=(h-text_h)/2"
             )
         ])
 
