@@ -81,8 +81,8 @@ def get_audio_duration(audio_path: str) -> float:
 
 
 def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regla: str) -> str:
-    font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
-
+    font_path = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf").replace("\\", "/")
+    
     if not os.path.exists(font_path):
         raise HTTPException(
             status_code=500,
@@ -97,7 +97,7 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
     filters = [
         (
             f"drawtext="
-            f"fontfile='{font_path}':"
+            f"fontfile={font_path}:"
             f"text='{title_main}':"
             f"fontsize=64:"
             f"fontcolor=white:"
@@ -108,7 +108,7 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
         ),
         (
             f"drawtext="
-            f"fontfile='{font_path}':"
+            f"fontfile={font_path}:"
             f"text='{title_num}':"
             f"fontsize=58:"
             f"fontcolor=0x8B0000:"
@@ -126,7 +126,7 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
 
         filters.append(
             f"drawtext="
-            f"fontfile='{font_path}':"
+            f"fontfile={font_path}:"
             f"text='{txt}':"
             f"fontsize=78:"
             f"fontcolor=white:"
@@ -238,7 +238,7 @@ async def render_video(
             drawtext_filters = ",".join([
                 (
                     f"drawtext="
-                    f"fontfile='{font_path}':"
+                    f"fontfile={font_path}:"
                     f"text='{title_main}':"
                     f"fontsize=64:"
                     f"fontcolor=white:"
@@ -249,7 +249,7 @@ async def render_video(
                 ),
                 (
                     f"drawtext="
-                    f"fontfile='{font_path}':"
+                    f"fontfile={font_path}:"
                     f"text='{title_num}':"
                     f"fontsize=58:"
                     f"fontcolor=0x8B0000:"
@@ -260,7 +260,7 @@ async def render_video(
                 ),
                 (
                     f"drawtext="
-                    f"fontfile='{font_path}':"
+                    f"fontfile={font_path}:"
                     f"text='{body_text}':"
                     f"fontsize=78:"
                     f"fontcolor=white:"
