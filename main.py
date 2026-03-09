@@ -85,26 +85,25 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"drawtext="
             f"fontfile='{safe_font_path}':"
             f"text='REGLAS INVISIBLES':"
-            f"fontsize=52:"
+            f"fontsize=57:"
             f"fontcolor=white:"
             f"borderw=4:"
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.08"
+            f"y=h*0.18"
         ),
         (
             f"drawtext="
             f"fontfile='{safe_font_path}':"
             f"text='#{numero_regla}':"
-            f"fontsize=46:"
+            f"fontsize=51:"
             f"fontcolor=0x8B0000:"
             f"borderw=4:"
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.14"
+            f"y=h*0.25"
         )
     ])
-
 
 @app.get("/")
 def health():
