@@ -338,4 +338,4 @@ async def render_video(
                 "audio_path": normalized_audio_path,
                 "drawtext_length": len(drawtext_filters),
             }
-        )
+    )
