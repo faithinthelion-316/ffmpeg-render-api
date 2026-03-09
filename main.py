@@ -1,3 +1,4 @@
+```python
 import os
 import uuid
 import shutil
@@ -36,16 +37,6 @@ def escape_ffmpeg_path(path: str) -> str:
         .replace(":", "\\:")
         .replace("'", r"\'")
     )
-
-
-def chunk_text(text: str, words_per_chunk: int = 4) -> List[str]:
-    words = text.replace("\n", " ").replace("\r", " ").split()
-    chunks = []
-    for i in range(0, len(words), words_per_chunk):
-        chunk = " ".join(words[i:i + words_per_chunk]).strip()
-        if chunk:
-            chunks.append(chunk.upper())
-    return chunks
 
 
 def get_audio_duration(audio_path: str) -> float:
@@ -91,72 +82,6 @@ def write_text_file(job_id: str, name: str, content: str) -> str:
     return file_path
 
 
-def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regla: str, job_id: str) -> str:
-    font_path = RUNTIME_FONT_FILE
-
-    if not os.path.exists(font_path):
-        raise HTTPException(
-            status_code=500,
-            detail=f"No se encontró la fuente en {font_path}"
-        )
-
-    safe_font_path = escape_ffmpeg_path(font_path)
-
-    title_main_file = write_text_file(job_id, "title_main", "REGLAS INVISIBLES")
-    title_num_file = write_text_file(job_id, "title_num", f"#{numero_regla}")
-
-    filters = [
-        (
-            f"drawtext="
-            f"fontfile='{safe_font_path}':"
-            f"textfile='{escape_ffmpeg_path(title_main_file)}':"
-            f"fontsize=64:"
-            f"fontcolor=white:"
-            f"borderw=6:"
-            f"bordercolor=black:"
-            f"x=(w-text_w)/2:"
-            f"y=h*0.08"
-        ),
-        (
-            f"drawtext="
-            f"fontfile='{safe_font_path}':"
-            f"textfile='{escape_ffmpeg_path(title_num_file)}':"
-            f"fontsize=58:"
-            f"fontcolor=0x8B0000:"
-            f"borderw=6:"
-            f"bordercolor=black:"
-            f"x=(w-text_w)/2:"
-            f"y=h*0.13"
-        )
-    ]
-
-    if not chunks:
-        chunks = ["..."]
-
-    duration_per_chunk = audio_duration / len(chunks)
-
-    for i, chunk in enumerate(chunks):
-        start = round(i * duration_per_chunk, 3)
-        end = round((i + 1) * duration_per_chunk, 3)
-
-        chunk_file = write_text_file(job_id, f"chunk_{i}", chunk)
-
-        filters.append(
-            f"drawtext="
-            f"fontfile='{safe_font_path}':"
-            f"textfile='{escape_ffmpeg_path(chunk_file)}':"
-            f"fontsize=78:"
-            f"fontcolor=white:"
-            f"borderw=8:"
-            f"bordercolor=black:"
-            f"x=(w-text_w)/2:"
-            f"y=(h-text_h)/2:"
-            f"enable='between(t,{start},{end})'"
-        )
-
-    return ",".join(filters)
-
-
 def build_static_drawtext_filter(guion: str, numero_regla: str, job_id: str) -> str:
     font_path = RUNTIME_FONT_FILE
 
@@ -181,9 +106,9 @@ def build_static_drawtext_filter(guion: str, numero_regla: str, job_id: str) -> 
             f"drawtext="
             f"fontfile='{safe_font_path}':"
             f"textfile='{escape_ffmpeg_path(title_main_file)}':"
-            f"fontsize=64:"
+            f"fontsize=52:"
             f"fontcolor=white:"
-            f"borderw=6:"
+            f"borderw=4:"
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
             f"y=h*0.08"
@@ -192,21 +117,22 @@ def build_static_drawtext_filter(guion: str, numero_regla: str, job_id: str) -> 
             f"drawtext="
             f"fontfile='{safe_font_path}':"
             f"textfile='{escape_ffmpeg_path(title_num_file)}':"
-            f"fontsize=58:"
+            f"fontsize=46:"
             f"fontcolor=0x8B0000:"
-            f"borderw=6:"
+            f"borderw=4:"
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.13"
+            f"y=h*0.14"
         ),
         (
             f"drawtext="
             f"fontfile='{safe_font_path}':"
             f"textfile='{escape_ffmpeg_path(body_file)}':"
-            f"fontsize=78:"
+            f"fontsize=54:"
             f"fontcolor=white:"
-            f"borderw=8:"
+            f"borderw=5:"
             f"bordercolor=black:"
+            f"line_spacing=12:"
             f"x=(w-text_w)/2:"
             f"y=(h-text_h)/2"
         )
@@ -277,11 +203,7 @@ async def render_video(
 
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
-    if subtitles_mode == "dynamic":
-        chunks = chunk_text(guion, words_per_chunk=4)
-        drawtext_filters = build_drawtext_filters(chunks, audio_duration, numero_regla, job_id)
-    else:
-        drawtext_filters = build_static_drawtext_filter(guion, numero_regla, job_id)
+    drawtext_filters = build_static_drawtext_filter(guion, numero_regla, job_id)
 
     ffmpeg_cmd = [
         "ffmpeg",
@@ -289,16 +211,16 @@ async def render_video(
         "-loglevel", "error",
         "-y",
         "-f", "lavfi",
-        "-i", f"color=c=black:s=1080x1920:r=30:d={audio_duration}",
+        "-i", f"color=c=black:s=720x1280:r=24:d={audio_duration}",
         "-i", normalized_audio_path,
         "-vf", drawtext_filters,
         "-map", "0:v:0",
         "-map", "1:a:0",
         "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "20",
+        "-preset", "ultrafast",
+        "-crf", "28",
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "128k",
         "-ar", "44100",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
@@ -341,5 +263,7 @@ async def render_video(
         "video_url": f"/video/{job_id}.mp4",
         "video_url_full": f"https://ffmpeg-render-api-production-1143.up.railway.app/video/{job_id}.mp4",
         "audio_duration": audio_duration,
-        "subtitles_mode_received": subtitles_mode
+        "subtitles_mode_received": subtitles_mode,
+        "render_mode": "static_safe"
     }
+```
