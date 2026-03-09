@@ -9,9 +9,6 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-# =========================
-# RUTAS
-# =========================
 BASE_DIR = "/tmp/ffmpeg_render"
 AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
@@ -33,9 +30,6 @@ if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
 
-# =========================
-# HELPERS
-# =========================
 def escape_ffmpeg_path(path: str) -> str:
     return (
         path.replace("\\", "\\\\")
@@ -219,9 +213,6 @@ def build_static_drawtext_filter(guion: str, numero_regla: str, job_id: str) -> 
     ])
 
 
-# =========================
-# ENDPOINTS
-# =========================
 @app.get("/")
 def health():
     return {
@@ -271,14 +262,17 @@ async def render_video(
         normalized_audio_path
     ]
 
-    print("NORMALIZE CMD:", " ".join(normalize_cmd))
     normalize_result = subprocess.run(normalize_cmd, capture_output=True, text=True)
 
     if normalize_result.returncode != 0:
-        print("NORMALIZE STDERR:\n", normalize_result.stderr)
         raise HTTPException(
             status_code=500,
-            detail=f"Error normalizando audio:\n{normalize_result.stderr}"
+            detail={
+                "message": "Error normalizando audio",
+                "returncode": normalize_result.returncode,
+                "stdout": normalize_result.stdout,
+                "stderr": normalize_result.stderr,
+            }
         )
 
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
@@ -312,16 +306,7 @@ async def render_video(
         video_path
     ]
 
-        print("FFMPEG CMD:", " ".join(ffmpeg_cmd))
     result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-
-    print("FFMPEG RETURN CODE:", result.returncode)
-    print("FFMPEG STDOUT:\n", result.stdout)
-    print("FFMPEG STDERR:\n", result.stderr)
-    print("VIDEO PATH:", video_path)
-    print("FONT EXISTS:", os.path.exists(RUNTIME_FONT_FILE), RUNTIME_FONT_FILE)
-    print("NORMALIZED AUDIO EXISTS:", os.path.exists(normalized_audio_path), normalized_audio_path)
-    print("DRAWTEXT LENGTH:", len(drawtext_filters))
 
     if result.returncode != 0:
         raise HTTPException(
@@ -338,4 +323,23 @@ async def render_video(
                 "audio_path": normalized_audio_path,
                 "drawtext_length": len(drawtext_filters),
             }
-    )
+        )
+
+    if not os.path.exists(video_path):
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "El video no se generó",
+                "video_path": video_path,
+                "audio_path": normalized_audio_path,
+                "font_path": RUNTIME_FONT_FILE,
+            }
+        )
+
+    return {
+        "ok": True,
+        "video_url": f"/video/{job_id}.mp4",
+        "video_url_full": f"https://ffmpeg-render-api-production-1143.up.railway.app/video/{job_id}.mp4",
+        "audio_duration": audio_duration,
+        "subtitles_mode_received": subtitles_mode
+    }
