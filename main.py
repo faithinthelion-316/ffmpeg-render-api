@@ -2,8 +2,6 @@ import os
 import uuid
 import shutil
 import subprocess
-from typing import List
-
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 
@@ -31,11 +29,7 @@ app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
 
 def escape_ffmpeg_path(path: str) -> str:
-    return (
-        path.replace("\\", "\\\\")
-        .replace(":", "\\:")
-        .replace("'", r"\'")
-    )
+    return path.replace("\\", "\\\\").replace(":", "\\:").replace("'", r"\'")
 
 
 def get_audio_duration(audio_path: str) -> float:
@@ -265,4 +259,3 @@ async def render_video(
         "subtitles_mode_received": subtitles_mode,
         "render_mode": "static_safe"
     }
-```
