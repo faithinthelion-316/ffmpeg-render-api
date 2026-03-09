@@ -312,23 +312,30 @@ async def render_video(
         video_path
     ]
 
-    print("FFMPEG CMD:", " ".join(ffmpeg_cmd))
+        print("FFMPEG CMD:", " ".join(ffmpeg_cmd))
     result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
 
+    print("FFMPEG RETURN CODE:", result.returncode)
+    print("FFMPEG STDOUT:\n", result.stdout)
+    print("FFMPEG STDERR:\n", result.stderr)
+    print("VIDEO PATH:", video_path)
+    print("FONT EXISTS:", os.path.exists(RUNTIME_FONT_FILE), RUNTIME_FONT_FILE)
+    print("NORMALIZED AUDIO EXISTS:", os.path.exists(normalized_audio_path), normalized_audio_path)
+    print("DRAWTEXT LENGTH:", len(drawtext_filters))
+
     if result.returncode != 0:
-        print("FFMPEG STDERR:\n", result.stderr)
         raise HTTPException(
             status_code=500,
-            detail=f"Error renderizando video:\n{result.stderr}"
+            detail={
+                "message": "Error renderizando video",
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "video_path": video_path,
+                "font_exists": os.path.exists(RUNTIME_FONT_FILE),
+                "font_path": RUNTIME_FONT_FILE,
+                "audio_exists": os.path.exists(normalized_audio_path),
+                "audio_path": normalized_audio_path,
+                "drawtext_length": len(drawtext_filters),
+            }
         )
-
-    if not os.path.exists(video_path):
-        raise HTTPException(status_code=500, detail="El video no se generó")
-
-    return {
-        "ok": True,
-        "video_url": f"/video/{job_id}.mp4",
-        "video_url_full": f"https://ffmpeg-render-api-production-1143.up.railway.app/video/{job_id}.mp4",
-        "audio_duration": audio_duration,
-        "subtitles_mode_received": subtitles_mode
-    }
