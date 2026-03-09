@@ -1,9 +1,10 @@
+```python
 import os
 import re
 import uuid
 import shutil
 import subprocess
-from typing import List, Tuple
+from typing import List
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -53,27 +54,14 @@ def ensure_font_available() -> str:
 
 
 def sanitize_text(text: str) -> str:
-    """
-    Sanitización orientada a estabilidad en drawtext/textfile.
-    No dependemos de text='...', así que aquí buscamos limpiar caracteres
-    problemáticos y normalizar espacios.
-    """
     if not text:
         return ""
 
-    text = text.replace("\r", " ").replace("\n", " ")
-    text = text.replace("\t", " ")
-
-    # Comillas tipográficas -> ASCII
+    text = text.replace("\r", " ").replace("\n", " ").replace("\t", " ")
     text = text.replace("“", '"').replace("”", '"')
     text = text.replace("‘", "'").replace("’", "'")
-
-    # Guiones largos -> normal
     text = text.replace("—", "-").replace("–", "-")
-
-    # Colapsar espacios
     text = re.sub(r"\s+", " ", text).strip()
-
     return text
 
 
@@ -144,11 +132,6 @@ def write_text_file(job_id: str, name: str, content: str) -> str:
 
 
 def escape_filter_path(path: str) -> str:
-    """
-    Escapado para valores dentro del filtro de FFmpeg.
-    Aunque usemos comillas simples, es mejor escapar backslash y ':'
-    por seguridad del parser de filtros.
-    """
     return path.replace("\\", "\\\\").replace(":", "\\:")
 
 
@@ -274,14 +257,21 @@ def build_drawtext_filters_static(
     ])
 
 
-def run_subprocess(cmd: List[str], error_prefix: str) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace"
-    )
+def run_subprocess(cmd: List[str], error_prefix: str, timeout_seconds: int = 180) -> subprocess.CompletedProcess:
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=500,
+            detail=f"{error_prefix}\nTimeout al ejecutar subprocess tras {timeout_seconds} segundos."
+        )
 
     log_block("COMMAND", " ".join(cmd))
     log_block("STDOUT", result.stdout or "(vacío)")
@@ -297,10 +287,6 @@ def run_subprocess(cmd: List[str], error_prefix: str) -> subprocess.CompletedPro
 
 
 def check_ffmpeg_drawtext_available() -> None:
-    """
-    Verificación operativa simple. Si drawtext no está disponible en esta build
-    de FFmpeg, se detecta al arrancar o en la primera petición.
-    """
     cmd = ["ffmpeg", "-hide_banner", "-filters"]
     result = subprocess.run(
         cmd,
@@ -322,11 +308,18 @@ def check_ffmpeg_drawtext_available() -> None:
 # =========================
 @app.get("/")
 def health():
+    print("HEALTHCHECK OK")
     return {
         "status": "running",
         "font_exists": os.path.exists(RUNTIME_FONT_FILE),
         "font_path": RUNTIME_FONT_FILE
     }
+
+
+@app.get("/ping")
+def ping():
+    print("PING OK")
+    return {"ok": True, "message": "pong"}
 
 
 @app.post("/render")
@@ -336,6 +329,12 @@ async def render_video(
     subtitles_mode: str = Form("dynamic"),
     audio_file: UploadFile = File(...)
 ):
+    print("===== REQUEST /render RECIBIDA =====")
+    print(f"numero_regla={numero_regla}")
+    print(f"subtitles_mode={subtitles_mode}")
+    print(f"audio_file.filename={audio_file.filename}")
+    print(f"audio_file.content_type={audio_file.content_type}")
+
     check_ffmpeg_drawtext_available()
     ensure_font_available()
 
@@ -346,15 +345,18 @@ async def render_video(
     video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
 
     audio_bytes = await audio_file.read()
+    print(f"audio_bytes_length={len(audio_bytes) if audio_bytes else 0}")
+
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="audio_file llegó vacío")
 
     with open(input_audio_path, "wb") as f:
         f.write(audio_bytes)
 
-    # =========================
-    # NORMALIZAR AUDIO
-    # =========================
+    print(f"input_audio_path={input_audio_path}")
+    print(f"normalized_audio_path={normalized_audio_path}")
+    print(f"video_path={video_path}")
+
     normalize_cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -367,19 +369,23 @@ async def render_video(
         "-b:a", "192k",
         normalized_audio_path
     ]
-    run_subprocess(normalize_cmd, "Error normalizando audio:")
+    run_subprocess(normalize_cmd, "Error normalizando audio:", timeout_seconds=120)
 
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
+    print(f"audio_duration={audio_duration}")
+
     if audio_duration <= 0:
         raise HTTPException(status_code=500, detail="No se pudo obtener la duración del audio")
 
-    # =========================
-    # FILTROS DE TEXTO
-    # =========================
     guion_limpio = sanitize_text(guion)
+    print(f"guion_original_len={len(guion) if guion else 0}")
+    print(f"guion_limpio_len={len(guion_limpio)}")
 
     if subtitles_mode == "dynamic":
         chunks = chunk_text(guion_limpio, words_per_chunk=4)
+        print(f"chunks_count={len(chunks)}")
+        print(f"chunks_preview={chunks[:5]}")
+
         if not chunks:
             raise HTTPException(status_code=400, detail="El guion quedó vacío tras sanitización")
 
@@ -398,9 +404,6 @@ async def render_video(
 
     log_block("DRAWTEXT FILTERS", drawtext_filters)
 
-    # =========================
-    # RENDER VIDEO
-    # =========================
     ffmpeg_cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -412,8 +415,9 @@ async def render_video(
         "-map", "0:v:0",
         "-map", "1:a:0",
         "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "20",
+        "-preset", "veryfast",
+        "-crf", "23",
+        "-threads", "1",
         "-c:a", "aac",
         "-b:a", "192k",
         "-ar", "44100",
@@ -423,10 +427,14 @@ async def render_video(
         video_path
     ]
 
-    run_subprocess(ffmpeg_cmd, "Error renderizando video:")
+    run_subprocess(ffmpeg_cmd, "Error renderizando video:", timeout_seconds=180)
 
     if not os.path.exists(video_path):
         raise HTTPException(status_code=500, detail="El video no se generó")
+
+    print(f"VIDEO GENERADO OK: {video_path}")
+
+    chunks_count = len(chunk_text(guion_limpio, words_per_chunk=4)) if subtitles_mode == "dynamic" else None
 
     return {
         "ok": True,
@@ -434,5 +442,6 @@ async def render_video(
         "video_url_full": f"https://ffmpeg-render-api-production-1143.up.railway.app/video/{job_id}.mp4",
         "audio_duration": audio_duration,
         "subtitles_mode_received": subtitles_mode,
-        "chunks_count": len(chunk_text(guion_limpio, words_per_chunk=4)) if subtitles_mode == "dynamic" else None
+        "chunks_count": chunks_count
     }
+```
