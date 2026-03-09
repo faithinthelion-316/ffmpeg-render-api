@@ -20,4 +20,6 @@ RUN mkdir -p /tmp/ffmpeg_render/audio \
     /tmp/ffmpeg_render/fonts \
     /tmp/ffmpeg_render/texts
 
-CMD sh -c "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"
+EXPOSE 8080
+
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
