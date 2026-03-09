@@ -1,8 +1,9 @@
 import os
+import re
 import uuid
 import shutil
 import subprocess
-from typing import List
+from typing import List, Tuple
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -16,12 +17,13 @@ BASE_DIR = "/tmp/ffmpeg_render"
 AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
+TEXTS_DIR = os.path.join(BASE_DIR, "texts")
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(FONTS_DIR, exist_ok=True)
+os.makedirs(TEXTS_DIR, exist_ok=True)
 
-# Si tienes la fuente en el repo en /app/fonts, la copiamos al arranque
 APP_FONTS_DIR = "/app/fonts"
 APP_FONT_FILE = os.path.join(APP_FONTS_DIR, "BebasNeue-Regular.ttf")
 RUNTIME_FONT_FILE = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
@@ -35,25 +37,59 @@ app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 # =========================
 # HELPERS
 # =========================
-def escape_ffmpeg_text(text: str) -> str:
-    return (
-        text.replace("\\", "\\\\")
-        .replace(":", "\\:")
-        .replace("'", r"\'")
-        .replace("%", r"\%")
-        .replace(",", r"\,")
-        .replace("[", r"\[")
-        .replace("]", r"\]")
-    )
+def log_block(title: str, content: str) -> None:
+    print(f"\n{'=' * 20} {title} {'=' * 20}")
+    print(content)
+    print(f"{'=' * 20} END {title} {'=' * 20}\n")
+
+
+def ensure_font_available() -> str:
+    if not os.path.exists(RUNTIME_FONT_FILE):
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se encontró la fuente en runtime: {RUNTIME_FONT_FILE}"
+        )
+    return RUNTIME_FONT_FILE
+
+
+def sanitize_text(text: str) -> str:
+    """
+    Sanitización orientada a estabilidad en drawtext/textfile.
+    No dependemos de text='...', así que aquí buscamos limpiar caracteres
+    problemáticos y normalizar espacios.
+    """
+    if not text:
+        return ""
+
+    text = text.replace("\r", " ").replace("\n", " ")
+    text = text.replace("\t", " ")
+
+    # Comillas tipográficas -> ASCII
+    text = text.replace("“", '"').replace("”", '"')
+    text = text.replace("‘", "'").replace("’", "'")
+
+    # Guiones largos -> normal
+    text = text.replace("—", "-").replace("–", "-")
+
+    # Colapsar espacios
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text
+
+
+def to_upper_clean(text: str) -> str:
+    return sanitize_text(text).upper()
 
 
 def chunk_text(text: str, words_per_chunk: int = 4) -> List[str]:
-    words = text.replace("\n", " ").replace("\r", " ").split()
+    words = sanitize_text(text).split()
     chunks = []
+
     for i in range(0, len(words), words_per_chunk):
         chunk = " ".join(words[i:i + words_per_chunk]).strip()
         if chunk:
             chunks.append(chunk.upper())
+
     return chunks
 
 
@@ -76,7 +112,13 @@ def get_audio_duration(audio_path: str) -> float:
     ]
 
     for cmd in probes:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
         raw = result.stdout.strip()
         if raw:
             for line in raw.splitlines():
@@ -90,64 +132,189 @@ def get_audio_duration(audio_path: str) -> float:
     return 8.0
 
 
-def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regla: str) -> str:
-    font_path = RUNTIME_FONT_FILE
+def write_text_file(job_id: str, name: str, content: str) -> str:
+    job_text_dir = os.path.join(TEXTS_DIR, job_id)
+    os.makedirs(job_text_dir, exist_ok=True)
 
-    if not os.path.exists(font_path):
-        raise HTTPException(
-            status_code=500,
-            detail=f"No se encontró la fuente en {font_path}"
-        )
+    file_path = os.path.join(job_text_dir, f"{name}.txt")
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    return file_path
+
+
+def escape_filter_path(path: str) -> str:
+    """
+    Escapado para valores dentro del filtro de FFmpeg.
+    Aunque usemos comillas simples, es mejor escapar backslash y ':'
+    por seguridad del parser de filtros.
+    """
+    return path.replace("\\", "\\\\").replace(":", "\\:")
+
+
+def build_drawtext_filters_dynamic(
+    job_id: str,
+    chunks: List[str],
+    audio_duration: float,
+    numero_regla: str
+) -> str:
+    font_path = ensure_font_available()
+    escaped_font_path = escape_filter_path(font_path)
 
     duration_per_chunk = audio_duration / max(len(chunks), 1)
 
-    title_main = escape_ffmpeg_text("REGLAS INVISIBLES")
-    title_num = escape_ffmpeg_text(f"#{numero_regla}")
+    title_main_path = write_text_file(job_id, "title_main", "REGLAS INVISIBLES")
+    title_num_path = write_text_file(job_id, "title_num", f"#{sanitize_text(numero_regla)}")
 
     filters = [
         (
-            f"drawtext="
-            f"fontfile='{font_path}':"
-            f"text='{title_main}':"
-            f"fontsize=64:"
-            f"fontcolor=white:"
-            f"borderw=6:"
-            f"bordercolor=black:"
-            f"x=(w-text_w)/2:"
-            f"y=h*0.08"
+            "drawtext="
+            f"fontfile='{escaped_font_path}':"
+            f"textfile='{escape_filter_path(title_main_path)}':"
+            "reload=0:"
+            "expansion=none:"
+            "fontsize=64:"
+            "fontcolor=white:"
+            "borderw=6:"
+            "bordercolor=black:"
+            "x=(w-text_w)/2:"
+            "y=h*0.08"
         ),
         (
-            f"drawtext="
-            f"fontfile='{font_path}':"
-            f"text='{title_num}':"
-            f"fontsize=58:"
-            f"fontcolor=0x8B0000:"
-            f"borderw=6:"
-            f"bordercolor=black:"
-            f"x=(w-text_w)/2:"
-            f"y=h*0.13"
-        )
+            "drawtext="
+            f"fontfile='{escaped_font_path}':"
+            f"textfile='{escape_filter_path(title_num_path)}':"
+            "reload=0:"
+            "expansion=none:"
+            "fontsize=58:"
+            "fontcolor=0x8B0000:"
+            "borderw=6:"
+            "bordercolor=black:"
+            "x=(w-text_w)/2:"
+            "y=h*0.13"
+        ),
     ]
 
     for i, chunk in enumerate(chunks):
         start = round(i * duration_per_chunk, 3)
         end = round((i + 1) * duration_per_chunk, 3)
-        txt = escape_ffmpeg_text(chunk)
+
+        chunk_path = write_text_file(job_id, f"chunk_{i}", chunk)
 
         filters.append(
-            f"drawtext="
-            f"fontfile='{font_path}':"
-            f"text='{txt}':"
-            f"fontsize=78:"
-            f"fontcolor=white:"
-            f"borderw=8:"
-            f"bordercolor=black:"
-            f"x=(w-text_w)/2:"
-            f"y=(h-text_h)/2:"
+            "drawtext="
+            f"fontfile='{escaped_font_path}':"
+            f"textfile='{escape_filter_path(chunk_path)}':"
+            "reload=0:"
+            "expansion=none:"
+            "fontsize=78:"
+            "fontcolor=white:"
+            "borderw=8:"
+            "bordercolor=black:"
+            "x=(w-text_w)/2:"
+            "y=(h-text_h)/2:"
             f"enable='between(t,{start},{end})'"
         )
 
     return ",".join(filters)
+
+
+def build_drawtext_filters_static(
+    job_id: str,
+    body_text: str,
+    numero_regla: str
+) -> str:
+    font_path = ensure_font_available()
+    escaped_font_path = escape_filter_path(font_path)
+
+    title_main_path = write_text_file(job_id, "title_main", "REGLAS INVISIBLES")
+    title_num_path = write_text_file(job_id, "title_num", f"#{sanitize_text(numero_regla)}")
+    body_text_path = write_text_file(job_id, "body_text", to_upper_clean(body_text))
+
+    return ",".join([
+        (
+            "drawtext="
+            f"fontfile='{escaped_font_path}':"
+            f"textfile='{escape_filter_path(title_main_path)}':"
+            "reload=0:"
+            "expansion=none:"
+            "fontsize=64:"
+            "fontcolor=white:"
+            "borderw=6:"
+            "bordercolor=black:"
+            "x=(w-text_w)/2:"
+            "y=h*0.08"
+        ),
+        (
+            "drawtext="
+            f"fontfile='{escaped_font_path}':"
+            f"textfile='{escape_filter_path(title_num_path)}':"
+            "reload=0:"
+            "expansion=none:"
+            "fontsize=58:"
+            "fontcolor=0x8B0000:"
+            "borderw=6:"
+            "bordercolor=black:"
+            "x=(w-text_w)/2:"
+            "y=h*0.13"
+        ),
+        (
+            "drawtext="
+            f"fontfile='{escaped_font_path}':"
+            f"textfile='{escape_filter_path(body_text_path)}':"
+            "reload=0:"
+            "expansion=none:"
+            "fontsize=78:"
+            "fontcolor=white:"
+            "borderw=8:"
+            "bordercolor=black:"
+            "x=(w-text_w)/2:"
+            "y=(h-text_h)/2"
+        )
+    ])
+
+
+def run_subprocess(cmd: List[str], error_prefix: str) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace"
+    )
+
+    log_block("COMMAND", " ".join(cmd))
+    log_block("STDOUT", result.stdout or "(vacío)")
+    log_block("STDERR", result.stderr or "(vacío)")
+
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"{error_prefix}\n{result.stderr}"
+        )
+
+    return result
+
+
+def check_ffmpeg_drawtext_available() -> None:
+    """
+    Verificación operativa simple. Si drawtext no está disponible en esta build
+    de FFmpeg, se detecta al arrancar o en la primera petición.
+    """
+    cmd = ["ffmpeg", "-hide_banner", "-filters"]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace"
+    )
+    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    if "drawtext" not in output:
+        raise HTTPException(
+            status_code=500,
+            detail="La build de FFmpeg no incluye el filtro drawtext."
+        )
 
 
 # =========================
@@ -155,7 +322,11 @@ def build_drawtext_filters(chunks: List[str], audio_duration: float, numero_regl
 # =========================
 @app.get("/")
 def health():
-    return {"status": "running"}
+    return {
+        "status": "running",
+        "font_exists": os.path.exists(RUNTIME_FONT_FILE),
+        "font_path": RUNTIME_FONT_FILE
+    }
 
 
 @app.post("/render")
@@ -165,6 +336,9 @@ async def render_video(
     subtitles_mode: str = Form("dynamic"),
     audio_file: UploadFile = File(...)
 ):
+    check_ffmpeg_drawtext_available()
+    ensure_font_available()
+
     job_id = str(uuid.uuid4())
 
     input_audio_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
@@ -178,9 +352,12 @@ async def render_video(
     with open(input_audio_path, "wb") as f:
         f.write(audio_bytes)
 
-    # Normalizar audio
+    # =========================
+    # NORMALIZAR AUDIO
+    # =========================
     normalize_cmd = [
         "ffmpeg",
+        "-hide_banner",
         "-y",
         "-i", input_audio_path,
         "-vn",
@@ -190,63 +367,43 @@ async def render_video(
         "-b:a", "192k",
         normalized_audio_path
     ]
-
-    normalize_result = subprocess.run(normalize_cmd, capture_output=True, text=True)
-    if normalize_result.returncode != 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error normalizando audio:\n{normalize_result.stderr}"
-        )
+    run_subprocess(normalize_cmd, "Error normalizando audio:")
 
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
+    if audio_duration <= 0:
+        raise HTTPException(status_code=500, detail="No se pudo obtener la duración del audio")
+
+    # =========================
+    # FILTROS DE TEXTO
+    # =========================
+    guion_limpio = sanitize_text(guion)
 
     if subtitles_mode == "dynamic":
-        chunks = chunk_text(guion, words_per_chunk=4)
-        drawtext_filters = build_drawtext_filters(chunks, audio_duration, numero_regla)
+        chunks = chunk_text(guion_limpio, words_per_chunk=4)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="El guion quedó vacío tras sanitización")
+
+        drawtext_filters = build_drawtext_filters_dynamic(
+            job_id=job_id,
+            chunks=chunks,
+            audio_duration=audio_duration,
+            numero_regla=numero_regla
+        )
     else:
-        font_path = RUNTIME_FONT_FILE
-        title_main = escape_ffmpeg_text("REGLAS INVISIBLES")
-        title_num = escape_ffmpeg_text(f"#{numero_regla}")
-        body_text = escape_ffmpeg_text(guion.replace("\n", " ").replace("\r", " ").upper())
+        drawtext_filters = build_drawtext_filters_static(
+            job_id=job_id,
+            body_text=guion_limpio,
+            numero_regla=numero_regla
+        )
 
-        drawtext_filters = ",".join([
-            (
-                f"drawtext="
-                f"fontfile='{font_path}':"
-                f"text='{title_main}':"
-                f"fontsize=64:"
-                f"fontcolor=white:"
-                f"borderw=6:"
-                f"bordercolor=black:"
-                f"x=(w-text_w)/2:"
-                f"y=h*0.08"
-            ),
-            (
-                f"drawtext="
-                f"fontfile='{font_path}':"
-                f"text='{title_num}':"
-                f"fontsize=58:"
-                f"fontcolor=0x8B0000:"
-                f"borderw=6:"
-                f"bordercolor=black:"
-                f"x=(w-text_w)/2:"
-                f"y=h*0.13"
-            ),
-            (
-                f"drawtext="
-                f"fontfile='{font_path}':"
-                f"text='{body_text}':"
-                f"fontsize=78:"
-                f"fontcolor=white:"
-                f"borderw=8:"
-                f"bordercolor=black:"
-                f"x=(w-text_w)/2:"
-                f"y=(h-text_h)/2:"
-            )
-        ])
+    log_block("DRAWTEXT FILTERS", drawtext_filters)
 
+    # =========================
+    # RENDER VIDEO
+    # =========================
     ffmpeg_cmd = [
         "ffmpeg",
+        "-hide_banner",
         "-y",
         "-f", "lavfi",
         "-i", f"color=c=black:s=1080x1920:r=30:d={audio_duration}",
@@ -266,13 +423,7 @@ async def render_video(
         video_path
     ]
 
-    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error renderizando video:\n{result.stderr}"
-        )
+    run_subprocess(ffmpeg_cmd, "Error renderizando video:")
 
     if not os.path.exists(video_path):
         raise HTTPException(status_code=500, detail="El video no se generó")
@@ -282,5 +433,6 @@ async def render_video(
         "video_url": f"/video/{job_id}.mp4",
         "video_url_full": f"https://ffmpeg-render-api-production-1143.up.railway.app/video/{job_id}.mp4",
         "audio_duration": audio_duration,
-        "subtitles_mode_received": subtitles_mode
+        "subtitles_mode_received": subtitles_mode,
+        "chunks_count": len(chunk_text(guion_limpio, words_per_chunk=4)) if subtitles_mode == "dynamic" else None
     }
