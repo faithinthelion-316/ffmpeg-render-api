@@ -2,7 +2,6 @@ import os
 import uuid
 import shutil
 import subprocess
-import requests
 import tempfile
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
