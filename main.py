@@ -234,7 +234,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,40,40,160,1
+Style: Default,Bebas Neue,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -247,7 +247,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             end = seconds_to_ass_time(cue["end"])
             text = escape_ass_text(cue["text"])
             f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}\n")
-
 
 @app.get("/")
 def health():
@@ -322,12 +321,13 @@ async def render_video(data: RenderRequest):
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
     words = build_words_from_alignment(data.normalized_alignment)
-    cues = group_words_into_cues(words, max_words=3, max_chars=22)
+    cues = group_words_into_cues(words, max_words=2, max_chars=14)
     write_ass_subtitles(subtitles_path, cues)
 
     title_filter = build_title_only_filter(data.numero_regla)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
-    video_filter = f"{title_filter},subtitles='{safe_subtitles_path}'"
+    safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
+    video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
     render_mode = "title_plus_dynamic_subtitles"
 
     ffmpeg_cmd = [
