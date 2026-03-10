@@ -4,12 +4,10 @@ import os
 import uuid
 import shutil
 import subprocess
-import tempfile
 import base64
-import json
 import re
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
