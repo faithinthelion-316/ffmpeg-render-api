@@ -118,7 +118,7 @@ def seconds_to_ass_time(seconds: float) -> str:
 
 
 def escape_ass_text(text: str) -> str:
-    return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
+    return text.replace("{", r"\{").replace("}", r"\}")
 
 
 def speed_up_alignment(alignment: dict, speed: float) -> dict:
