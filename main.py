@@ -7,7 +7,6 @@ import tempfile
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -240,25 +239,20 @@ async def render_video(
     }
 
 
-class AlignRequest(BaseModel):
-    id: str
-    guion: str
-    audio_url: str
-
 @app.post("/align")
-async def align(data: AlignRequest):
-
-    audio_response = requests.get(data.audio_url)
-
-    if audio_response.status_code != 200:
-        return {"error": "audio download failed"}
-
+async def align(
+    id: str = Form(...),
+    guion: str = Form(...),
+    audio_file: UploadFile = File(...)
+):
     tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    tmp_file.write(audio_response.content)
+    audio_bytes = await audio_file.read()
+    tmp_file.write(audio_bytes)
     tmp_file.close()
 
     return {
-        "status": "audio_downloaded",
-        "id": data.id,
+        "status": "audio_received",
+        "id": id,
+        "guion_length": len(guion),
         "audio_file": tmp_file.name
     }
