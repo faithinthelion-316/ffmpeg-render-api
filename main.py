@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+
 import os
 import uuid
 import shutil
@@ -243,14 +245,16 @@ def health():
     }
 
 
+class RenderRequest(BaseModel):
+    numero_regla: str
+    guion: str
+    subtitles_mode: str = "dynamic"
+    audio_base64: str
+    normalized_alignment: dict
+
+
 @app.post("/render")
-async def render_video(
-    numero_regla: str = Form(...),
-    guion: str = Form(...),
-    subtitles_mode: str = Form("dynamic"),
-    audio_base64: str = Form(...),
-    normalized_alignment_json: str = Form(...)
-):
+async def render_video(data: RenderRequest):
     if not os.path.exists(RUNTIME_FONT_FILE):
         raise HTTPException(
             status_code=500,
@@ -265,7 +269,7 @@ async def render_video(
     video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
 
     try:
-        audio_bytes = base64.b64decode(audio_base64)
+        audio_bytes = base64.b64decode(data.audio_base64)
     except Exception:
         raise HTTPException(status_code=400, detail="audio_base64 inválido")
 
@@ -304,16 +308,11 @@ async def render_video(
 
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
-    try:
-        alignment = json.loads(normalized_alignment_json)
-    except Exception:
-        raise HTTPException(status_code=400, detail="normalized_alignment_json inválido")
-
-    words = build_words_from_alignment(alignment)
+    words = build_words_from_alignment(data.normalized_alignment)
     cues = group_words_into_cues(words, max_words=3, max_chars=22)
     write_ass_subtitles(subtitles_path, cues)
 
-    title_filter = build_title_only_filter(numero_regla)
+    title_filter = build_title_only_filter(data.numero_regla)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     video_filter = f"{title_filter},subtitles='{safe_subtitles_path}'"
     render_mode = "title_plus_dynamic_subtitles"
@@ -376,30 +375,7 @@ async def render_video(
         "video_url": f"/video/{job_id}.mp4",
         "video_url_full": f"https://ffmpeg-render-api-production-1143.up.railway.app/video/{job_id}.mp4",
         "audio_duration": audio_duration,
-        "subtitles_mode_received": subtitles_mode,
+        "subtitles_mode_received": data.subtitles_mode,
         "render_mode": render_mode,
         "cues_count": len(cues)
-    }
-
-
-@app.post("/align")
-async def align(
-    id: str = Form(...),
-    guion: str = Form(...),
-    audio_file: UploadFile = File(...)
-):
-    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    audio_bytes = await audio_file.read()
-
-    if not audio_bytes:
-        raise HTTPException(status_code=400, detail="audio_file llegó vacío")
-
-    tmp_file.write(audio_bytes)
-    tmp_file.close()
-
-    return {
-        "status": "audio_received",
-        "id": id,
-        "guion_length": len(guion),
-        "audio_file": tmp_file.name
     }
