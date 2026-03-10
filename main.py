@@ -94,7 +94,7 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"borderw=2:"
             f"bordercolor=0x000000:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.12"
+            f"y=h*0.16"
         ),
         (
             f"drawtext="
@@ -105,7 +105,7 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"borderw=4:"
             f"bordercolor=0x000000:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.17"
+            f"y=h*0.21"
         )
     ])
 
