@@ -87,16 +87,17 @@ def build_title_only_filter(numero_regla: str) -> str:
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
 
     return ",".join([
-        (
-            f"drawtext="
-            f"fontfile='{safe_font_path}':"
-            f"text='REGLAS INVISIBLES':"
-            f"fontsize=57:"
-            f"fontcolor=white:"
-            f"borderw=4:"
-            f"bordercolor=black:"
-            f"x=(w-text_w)/2:"
-            f"y=h*0.10"
+
+       (
+    f"drawtext="
+    f"fontfile='{safe_font_path}':"
+    f"text='REGLAS INVISIBLES':"
+    f"fontsize=57:"
+    f"fontcolor=0xFFFFFF:"
+    f"borderw=3:"
+    f"bordercolor=black:"
+    f"x=(w-text_w)/2:"
+    f"y=h*0.10"
         ),
         (
             f"drawtext="
@@ -234,7 +235,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,70,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1
+Style: Default,Bebas Neue,88,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
