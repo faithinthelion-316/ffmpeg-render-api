@@ -172,7 +172,7 @@ def build_words_from_alignment(alignment: dict) -> list:
 
     return words
 
-def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 28) -> list:
+def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) -> list:
     cues = []
     bucket = []
 
@@ -232,7 +232,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,88,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1
+Style: Default,Bebas Neue,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,5,50,50,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -320,7 +320,7 @@ async def render_video(data: RenderRequest):
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
     words = build_words_from_alignment(data.normalized_alignment)
-    cues = group_words_into_cues(words, max_words=4, max_chars=28)
+    cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
     title_filter = build_title_only_filter(data.numero_regla)
