@@ -134,7 +134,6 @@ def build_words_from_alignment(alignment: dict) -> list:
     words = []
     current_chars = []
     current_start = None
-    current_end = None
 
     for ch, st, en in zip(characters, starts, ends):
         if ch.isspace():
