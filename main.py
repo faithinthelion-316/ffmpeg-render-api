@@ -320,7 +320,7 @@ async def render_video(data: RenderRequest):
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
     words = build_words_from_alignment(data.normalized_alignment)
-cues = group_words_into_cues(words, max_words=4, max_chars=28)
+    cues = group_words_into_cues(words, max_words=4, max_chars=28)
     write_ass_subtitles(subtitles_path, cues)
 
     title_filter = build_title_only_filter(data.numero_regla)
