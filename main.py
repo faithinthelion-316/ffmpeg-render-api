@@ -5,6 +5,7 @@ import subprocess
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -235,7 +236,6 @@ async def render_video(
         "subtitles_mode_received": subtitles_mode,
         "render_mode": render_mode
     }
-from pydantic import BaseModel
 
 
 class AlignRequest(BaseModel):
