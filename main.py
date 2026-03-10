@@ -235,3 +235,11 @@ async def render_video(
         "subtitles_mode_received": subtitles_mode,
         "render_mode": render_mode
     }
+@app.post("/align")
+async def align(id: str, guion: str, audio_url: str):
+    return {
+        "status": "received",
+        "id": id,
+        "guion_length": len(guion),
+        "audio_url": audio_url
+    }
