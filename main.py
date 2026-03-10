@@ -88,17 +88,17 @@ def build_title_only_filter(numero_regla: str) -> str:
 
     return ",".join([
 
-       (
+(
     f"drawtext="
     f"fontfile='{safe_font_path}':"
     f"text='REGLAS INVISIBLES':"
     f"fontsize=57:"
     f"fontcolor=0xFFFFFF:"
-    f"borderw=3:"
-    f"bordercolor=black:"
+    f"borderw=2:"
+    f"bordercolor=0x000000:"
     f"x=(w-text_w)/2:"
     f"y=h*0.10"
-        ),
+),
         (
             f"drawtext="
             f"fontfile='{safe_font_path}':"
