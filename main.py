@@ -247,8 +247,7 @@ class AlignRequest(BaseModel):
 @app.post("/align")
 async def align(data: AlignRequest):
     return {
-        "status": "received",
+        "status": "audio_downloaded",
         "id": data.id,
-        "guion_length": len(data.guion),
         "audio_url": data.audio_url
     }
