@@ -92,7 +92,7 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"fontsize=57:"
             f"fontcolor=white:"
             f"borderw=2:"
-            f"bordercolor=0x000000:"
+            f"bordercolor=black:"
             f"x=(w-text_w)/2:"
             f"y=h*0.16"
         ),
@@ -101,9 +101,9 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"fontfile='{safe_font_path}':"
             f"text='#{numero_regla}':"
             f"fontsize=57:"
-            f"fontcolor=0x8B0000:"
+            f"fontcolor=red:"
             f"borderw=4:"
-            f"bordercolor=0x000000:"
+            f"bordercolor=black:"
             f"x=(w-text_w)/2:"
             f"y=h*0.21"
         )
@@ -119,6 +119,18 @@ def seconds_to_ass_time(seconds: float) -> str:
 
 def escape_ass_text(text: str) -> str:
     return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
+
+
+def speed_up_alignment(alignment: dict, speed: float) -> dict:
+    return {
+        "characters": alignment.get("characters", []),
+        "character_start_times_seconds": [
+            float(x) / speed for x in alignment.get("character_start_times_seconds", [])
+        ],
+        "character_end_times_seconds": [
+            float(x) / speed for x in alignment.get("character_end_times_seconds", [])
+        ],
+    }
 
 
 def build_words_from_alignment(alignment: dict) -> list:
@@ -172,6 +184,38 @@ def build_words_from_alignment(alignment: dict) -> list:
 
     return words
 
+
+def split_text_two_lines(text: str, max_line_chars: int = 26) -> str:
+    words = text.split()
+    if len(words) <= 1:
+        return text
+
+    best_split_index = None
+    best_score = None
+
+    for i in range(1, len(words)):
+        line1 = " ".join(words[:i])
+        line2 = " ".join(words[i:])
+
+        if len(line1) > max_line_chars or len(line2) > max_line_chars:
+            continue
+
+        score = abs(len(line1) - len(line2))
+        if best_score is None or score < best_score:
+            best_score = score
+            best_split_index = i
+
+    if best_split_index is None:
+        midpoint = len(words) // 2
+        line1 = " ".join(words[:midpoint])
+        line2 = " ".join(words[midpoint:])
+        return f"{line1}\\N{line2}"
+
+    line1 = " ".join(words[:best_split_index])
+    line2 = " ".join(words[best_split_index:])
+    return f"{line1}\\N{line2}"
+
+
 def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) -> list:
     cues = []
     bucket = []
@@ -181,13 +225,18 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
         if not bucket:
             return
 
-        text = " ".join(str(item["word"]) for item in bucket).strip()
-        if text:
+        raw_text = " ".join(str(item["word"]) for item in bucket).strip()
+        if raw_text:
             start_value = float(bucket[0]["start"])
             end_value = float(bucket[-1]["end"])
 
+            if len(raw_text) > 26:
+                cue_text = split_text_two_lines(raw_text.upper(), max_line_chars=26)
+            else:
+                cue_text = raw_text.upper()
+
             cues.append({
-                "text": text.upper(),
+                "text": cue_text,
                 "start": start_value,
                 "end": end_value,
             })
@@ -290,6 +339,8 @@ async def render_video(data: RenderRequest):
     with open(input_audio_path, "wb") as f:
         f.write(audio_bytes)
 
+    speed_factor = 1.3
+
     normalize_cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -297,6 +348,7 @@ async def render_video(data: RenderRequest):
         "-y",
         "-i", input_audio_path,
         "-vn",
+        "-filter:a", f"atempo={speed_factor}",
         "-acodec", "libmp3lame",
         "-ar", "44100",
         "-ac", "2",
@@ -319,7 +371,8 @@ async def render_video(data: RenderRequest):
 
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
-    words = build_words_from_alignment(data.normalized_alignment)
+    adjusted_alignment = speed_up_alignment(data.normalized_alignment, speed_factor)
+    words = build_words_from_alignment(adjusted_alignment)
     cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
@@ -389,5 +442,6 @@ async def render_video(data: RenderRequest):
         "audio_duration": audio_duration,
         "subtitles_mode_received": data.subtitles_mode,
         "render_mode": render_mode,
-        "cues_count": len(cues)
+        "cues_count": len(cues),
+        "speed_factor": speed_factor
     }
