@@ -88,9 +88,9 @@ def build_title_only_filter(numero_regla: str) -> str:
         (
             f"drawtext="
             f"fontfile='{safe_font_path}':"
-            f"text='REGLAS INVISIBLES':"
+            f"text='REGLA INVISIBLE':"
             f"fontsize=57:"
-            f"fontcolor=0xFFFFFF:"
+            f"fontcolor=white:"
             f"borderw=2:"
             f"bordercolor=0x000000:"
             f"x=(w-text_w)/2:"
