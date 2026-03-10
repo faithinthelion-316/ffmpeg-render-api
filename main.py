@@ -172,8 +172,7 @@ def build_words_from_alignment(alignment: dict) -> list:
 
     return words
 
-
-def group_words_into_cues(words: list, max_words: int = 2, max_chars: int = 14) -> list:
+def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 28) -> list:
     cues = []
     bucket = []
 
@@ -321,7 +320,7 @@ async def render_video(data: RenderRequest):
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
     words = build_words_from_alignment(data.normalized_alignment)
-    cues = group_words_into_cues(words, max_words=2, max_chars=14)
+cues = group_words_into_cues(words, max_words=4, max_chars=28)
     write_ass_subtitles(subtitles_path, cues)
 
     title_filter = build_title_only_filter(data.numero_regla)
