@@ -134,16 +134,23 @@ def build_words_from_alignment(alignment: dict) -> list:
     words = []
     current_chars = []
     current_start = None
+    current_end = None
 
     for ch, st, en in zip(characters, starts, ends):
-        if ch.isspace():
+        try:
+            st = float(st)
+            en = float(en)
+        except Exception:
+            continue
+
+        if str(ch).isspace():
             if current_chars:
                 word = "".join(current_chars).strip()
                 if word:
                     words.append({
                         "word": word,
-                        "start": current_start,
-                        "end": current_end,
+                        "start": float(current_start),
+                        "end": float(current_end),
                     })
                 current_chars = []
                 current_start = None
@@ -153,7 +160,7 @@ def build_words_from_alignment(alignment: dict) -> list:
         if current_start is None:
             current_start = st
 
-        current_chars.append(ch)
+        current_chars.append(str(ch))
         current_end = en
 
     if current_chars:
@@ -161,8 +168,8 @@ def build_words_from_alignment(alignment: dict) -> list:
         if word:
             words.append({
                 "word": word,
-                "start": current_start,
-                "end": current_end,
+                "start": float(current_start),
+                "end": float(current_end),
             })
 
     return words
@@ -176,20 +183,25 @@ def group_words_into_cues(words: list, max_words: int = 3, max_chars: int = 22) 
         nonlocal bucket
         if not bucket:
             return
-        text = " ".join(item["word"] for item in bucket).strip()
+
+        text = " ".join(str(item["word"]) for item in bucket).strip()
         if text:
+            start_value = float(bucket[0]["start"])
+            end_value = float(bucket[-1]["end"])
+
             cues.append({
                 "text": text.upper(),
-                "start": bucket[0]["start"],
-                "end": bucket[-1]["end"],
+                "start": start_value,
+                "end": end_value,
             })
+
         bucket = []
 
     for item in words:
         candidate_words = bucket + [item]
-        candidate_text = " ".join(x["word"] for x in candidate_words)
+        candidate_text = " ".join(str(x["word"]) for x in candidate_words)
 
-        punctuation_break = bool(re.search(r"[.!?,;:]$", item["word"]))
+        punctuation_break = bool(re.search(r"[.!?,;:]$", str(item["word"])))
         too_many_words = len(candidate_words) > max_words
         too_many_chars = len(candidate_text) > max_chars
 
@@ -204,11 +216,13 @@ def group_words_into_cues(words: list, max_words: int = 3, max_chars: int = 22) 
     flush_bucket()
 
     for cue in cues:
+        cue["start"] = float(cue["start"])
+        cue["end"] = float(cue["end"])
+
         if cue["end"] - cue["start"] < 0.45:
             cue["end"] = cue["start"] + 0.45
 
     return cues
-
 
 def write_ass_subtitles(subtitles_path: str, cues: list):
     header = """[Script Info]
