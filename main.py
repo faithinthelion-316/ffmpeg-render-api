@@ -94,7 +94,7 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"borderw=2:"
             f"bordercolor=0x000000:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.10"
+            f"y=h*0.12"
         ),
         (
             f"drawtext="
