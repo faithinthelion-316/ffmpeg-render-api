@@ -299,14 +299,13 @@ async def render_video(data: RenderRequest):
     "-y",
     "-i", input_audio_path,
     "-vn",
-    "-filter:a", "atempo=1.06",
     "-acodec", "libmp3lame",
     "-ar", "44100",
     "-ac", "2",
     "-b:a", "192k",
     normalized_audio_path
      ]
-     
+             
     normalize_result = subprocess.run(normalize_cmd, capture_output=True, text=True)
 
     if normalize_result.returncode != 0:
