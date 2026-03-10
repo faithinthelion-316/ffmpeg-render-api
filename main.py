@@ -2,6 +2,8 @@ import os
 import uuid
 import shutil
 import subprocess
+import requests
+import tempfile
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -243,11 +245,20 @@ class AlignRequest(BaseModel):
     guion: str
     audio_url: str
 
-
 @app.post("/align")
 async def align(data: AlignRequest):
+
+    audio_response = requests.get(data.audio_url)
+
+    if audio_response.status_code != 200:
+        return {"error": "audio download failed"}
+
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp_file.write(audio_response.content)
+    tmp_file.close()
+
     return {
         "status": "audio_downloaded",
         "id": data.id,
-        "audio_url": data.audio_url
+        "audio_file": tmp_file.name
     }
