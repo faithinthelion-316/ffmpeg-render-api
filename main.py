@@ -235,11 +235,20 @@ async def render_video(
         "subtitles_mode_received": subtitles_mode,
         "render_mode": render_mode
     }
+from pydantic import BaseModel
+
+
+class AlignRequest(BaseModel):
+    id: str
+    guion: str
+    audio_url: str
+
+
 @app.post("/align")
-async def align(id: str, guion: str, audio_url: str):
+async def align(data: AlignRequest):
     return {
         "status": "received",
-        "id": id,
-        "guion_length": len(guion),
-        "audio_url": audio_url
+        "id": data.id,
+        "guion_length": len(data.guion),
+        "audio_url": data.audio_url
     }
