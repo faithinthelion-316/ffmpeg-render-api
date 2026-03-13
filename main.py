@@ -17,6 +17,8 @@ AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
 
+MUSIC_FILE = "/app/music/background.mp3"
+
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(FONTS_DIR, exist_ok=True)
@@ -301,7 +303,9 @@ def health():
     return {
         "status": "running",
         "font_exists": os.path.exists(RUNTIME_FONT_FILE),
-        "font_path": RUNTIME_FONT_FILE
+        "font_path": RUNTIME_FONT_FILE,
+        "music_exists": os.path.exists(MUSIC_FILE),
+        "music_path": MUSIC_FILE
     }
 
 
@@ -325,6 +329,7 @@ async def render_video(data: RenderRequest):
 
     input_audio_path = os.path.join(AUDIO_DIR, f"{job_id}.mp3")
     normalized_audio_path = os.path.join(AUDIO_DIR, f"{job_id}_normalized.mp3")
+    mixed_audio_path = os.path.join(AUDIO_DIR, f"{job_id}_mixed.mp3")
     subtitles_path = os.path.join(BASE_DIR, f"{job_id}.ass")
     video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
 
@@ -368,6 +373,27 @@ async def render_video(data: RenderRequest):
                 "stderr": normalize_result.stderr,
             }
         )
+
+    if os.path.exists(MUSIC_FILE):
+        mix_cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "error",
+            "-y",
+            "-stream_loop", "-1",
+            "-i", MUSIC_FILE,
+            "-i", normalized_audio_path,
+            "-filter_complex",
+            "[0:a]volume=0.12[bg];[1:a]volume=1.0[voice];[bg][voice]amix=inputs=2:duration=shortest:dropout_transition=2",
+            "-c:a", "libmp3lame",
+            "-b:a", "192k",
+            mixed_audio_path
+        ]
+
+        mix_result = subprocess.run(mix_cmd, capture_output=True, text=True)
+
+        if mix_result.returncode == 0 and os.path.exists(mixed_audio_path):
+            normalized_audio_path = mixed_audio_path
 
     audio_duration = round(get_audio_duration(normalized_audio_path), 3)
 
@@ -443,5 +469,6 @@ async def render_video(data: RenderRequest):
         "subtitles_mode_received": data.subtitles_mode,
         "render_mode": render_mode,
         "cues_count": len(cues),
-        "speed_factor": speed_factor
+        "speed_factor": speed_factor,
+        "music_used": os.path.exists(MUSIC_FILE)
     }
