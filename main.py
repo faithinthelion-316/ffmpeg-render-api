@@ -17,7 +17,7 @@ AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
 
-MUSIC_FILE = "/app/music/background.mp3"
+MUSIC_FILE = "/app/music/backgroundRi.mp3"
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
