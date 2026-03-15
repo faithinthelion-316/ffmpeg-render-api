@@ -384,7 +384,7 @@ async def render_video(data: RenderRequest):
             "-i", MUSIC_FILE,
             "-i", normalized_audio_path,
             "-filter_complex",
-            "[0:a]volume=0.15[bg];[1:a]volume=1.3[voice];[bg][voice]amix=inputs=2:duration=shortest:dropout_transition=2",
+            "[0:a]volume=0.18[bg];[1:a]volume=1.4[voice];[bg][voice]amix=inputs=2:duration=shortest:dropout_transition=2",
             "-c:a", "libmp3lame",
             "-b:a", "192k",
             mixed_audio_path
