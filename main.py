@@ -187,7 +187,7 @@ def build_words_from_alignment(alignment: dict) -> list:
     return words
 
 
-def split_text_two_lines(text: str, max_line_chars: int = 14) -> str:
+def split_text_two_lines(text: str, max_line_chars: int = 26) -> str:
     words = text.split()
     if len(words) <= 1:
         return text
@@ -218,14 +218,9 @@ def split_text_two_lines(text: str, max_line_chars: int = 14) -> str:
     return f"{line1}\\N{line2}"
 
 
-def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) -> list:
+def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) -> list:
     cues = []
     bucket = []
-
-    rhythm_break_words = {
-        "PERO", "ENTONCES", "LUEGO", "AHORA", "DESPUÉS", "DESPUES",
-        "MIENTRAS", "ANTES", "PORQUE", "CUANDO", "SI", "Y"
-    }
 
     def flush_bucket():
         nonlocal bucket
@@ -237,8 +232,10 @@ def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) 
             start_value = float(bucket[0]["start"])
             end_value = float(bucket[-1]["end"])
 
-            upper_text = raw_text.upper()
-            cue_text = split_text_two_lines(upper_text, max_line_chars=14)
+            if len(raw_text) > 26:
+                cue_text = split_text_two_lines(raw_text.upper(), max_line_chars=26)
+            else:
+                cue_text = raw_text.upper()
 
             cues.append({
                 "text": cue_text,
@@ -252,9 +249,7 @@ def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) 
         candidate_words = bucket + [item]
         candidate_text = " ".join(str(x["word"]) for x in candidate_words)
 
-        word_upper = str(item["word"]).upper()
         punctuation_break = bool(re.search(r"[.!?,;:]$", str(item["word"])))
-        rhythm_break = word_upper in rhythm_break_words and len(bucket) >= 2
         too_many_words = len(candidate_words) > max_words
         too_many_chars = len(candidate_text) > max_chars
 
@@ -263,7 +258,7 @@ def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) 
 
         bucket.append(item)
 
-        if punctuation_break or rhythm_break:
+        if punctuation_break:
             flush_bucket()
 
     flush_bucket()
@@ -272,8 +267,8 @@ def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) 
         cue["start"] = float(cue["start"])
         cue["end"] = float(cue["end"])
 
-        if cue["end"] - cue["start"] < 0.60:
-            cue["end"] = cue["start"] + 0.60
+        if cue["end"] - cue["start"] < 0.45:
+            cue["end"] = cue["start"] + 0.45
 
     return cues
 
@@ -288,7 +283,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,74,&H00FFFFFF,&H00FFFFFF,&H00000000,&H50000000,-1,0,0,0,100,100,0,0,1,5,0,5,40,40,180,1
+Style: Default,Bebas Neue,68,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,5,50,50,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -404,7 +399,7 @@ async def render_video(data: RenderRequest):
 
     adjusted_alignment = speed_up_alignment(data.normalized_alignment, speed_factor)
     words = build_words_from_alignment(adjusted_alignment)
-    cues = group_words_into_cues(words, max_words=4, max_chars=22)
+    cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
     title_filter = build_title_only_filter(data.numero_regla)
