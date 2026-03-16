@@ -218,49 +218,13 @@ def split_text_two_lines(text: str, max_line_chars: int = 14) -> str:
     return f"{line1}\\N{line2}"
 
 
-def highlight_keyword(text: str) -> str:
-    words = text.split()
-    if not words:
-        return text
-
-    priority_words = {
-        "NO", "NUNCA", "NADIE", "OTRO", "OTRA", "JEFE", "IDEA", "CRÉDITO",
-        "CREDITO", "AUTORIDAD", "REUNIÓN", "REUNION", "REUNIONES",
-        "RESPONDE", "DECIDE", "CALLADO", "CALLADA", "SUBE", "BAJA",
-        "MIRAN", "MIRA", "CIERRA", "RIESGO", "NOMBRE", "PESO", "ROL"
-    }
-
-    best_index = None
-
-    for i, word in enumerate(words):
-        clean = re.sub(r"[^\wÁÉÍÓÚÑáéíóúñ]", "", word.upper())
-        if clean in priority_words:
-            best_index = i
-            break
-
-    if best_index is None:
-        if len(words) == 1:
-            best_index = 0
-        else:
-            best_index = min(1, len(words) - 1)
-
-    highlighted = []
-    for i, word in enumerate(words):
-        if i == best_index:
-            highlighted.append(r"{\c&H00A5FF&}" + word + r"{\c&H00FFFFFF&}")
-        else:
-            highlighted.append(word)
-
-    return " ".join(highlighted)
-
-
 def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) -> list:
     cues = []
     bucket = []
 
     rhythm_break_words = {
         "PERO", "ENTONCES", "LUEGO", "AHORA", "DESPUÉS", "DESPUES",
-        "MIENTRAS", "ANTES", "PORQUE", "CUANDO", "SI", "Y", "PERO"
+        "MIENTRAS", "ANTES", "PORQUE", "CUANDO", "SI", "Y"
     }
 
     def flush_bucket():
@@ -274,8 +238,7 @@ def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) 
             end_value = float(bucket[-1]["end"])
 
             upper_text = raw_text.upper()
-            highlighted_text = highlight_keyword(upper_text)
-            cue_text = split_text_two_lines(highlighted_text, max_line_chars=14)
+            cue_text = split_text_two_lines(upper_text, max_line_chars=14)
 
             cues.append({
                 "text": cue_text,
