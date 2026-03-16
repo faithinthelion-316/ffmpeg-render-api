@@ -187,7 +187,7 @@ def build_words_from_alignment(alignment: dict) -> list:
     return words
 
 
-def split_text_two_lines(text: str, max_line_chars: int = 26) -> str:
+def split_text_two_lines(text: str, max_line_chars: int = 14) -> str:
     words = text.split()
     if len(words) <= 1:
         return text
@@ -218,9 +218,50 @@ def split_text_two_lines(text: str, max_line_chars: int = 26) -> str:
     return f"{line1}\\N{line2}"
 
 
-def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) -> list:
+def highlight_keyword(text: str) -> str:
+    words = text.split()
+    if not words:
+        return text
+
+    priority_words = {
+        "NO", "NUNCA", "NADIE", "OTRO", "OTRA", "JEFE", "IDEA", "CRÉDITO",
+        "CREDITO", "AUTORIDAD", "REUNIÓN", "REUNION", "REUNIONES",
+        "RESPONDE", "DECIDE", "CALLADO", "CALLADA", "SUBE", "BAJA",
+        "MIRAN", "MIRA", "CIERRA", "RIESGO", "NOMBRE", "PESO", "ROL"
+    }
+
+    best_index = None
+
+    for i, word in enumerate(words):
+        clean = re.sub(r"[^\wÁÉÍÓÚÑáéíóúñ]", "", word.upper())
+        if clean in priority_words:
+            best_index = i
+            break
+
+    if best_index is None:
+        if len(words) == 1:
+            best_index = 0
+        else:
+            best_index = min(1, len(words) - 1)
+
+    highlighted = []
+    for i, word in enumerate(words):
+        if i == best_index:
+            highlighted.append(r"{\c&H00A5FF&}" + word + r"{\c&H00FFFFFF&}")
+        else:
+            highlighted.append(word)
+
+    return " ".join(highlighted)
+
+
+def group_words_into_cues(words: list, max_words: int = 4, max_chars: int = 22) -> list:
     cues = []
     bucket = []
+
+    rhythm_break_words = {
+        "PERO", "ENTONCES", "LUEGO", "AHORA", "DESPUÉS", "DESPUES",
+        "MIENTRAS", "ANTES", "PORQUE", "CUANDO", "SI", "Y", "PERO"
+    }
 
     def flush_bucket():
         nonlocal bucket
@@ -232,10 +273,9 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
             start_value = float(bucket[0]["start"])
             end_value = float(bucket[-1]["end"])
 
-            if len(raw_text) > 26:
-                cue_text = split_text_two_lines(raw_text.upper(), max_line_chars=26)
-            else:
-                cue_text = raw_text.upper()
+            upper_text = raw_text.upper()
+            highlighted_text = highlight_keyword(upper_text)
+            cue_text = split_text_two_lines(highlighted_text, max_line_chars=14)
 
             cues.append({
                 "text": cue_text,
@@ -249,7 +289,9 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
         candidate_words = bucket + [item]
         candidate_text = " ".join(str(x["word"]) for x in candidate_words)
 
+        word_upper = str(item["word"]).upper()
         punctuation_break = bool(re.search(r"[.!?,;:]$", str(item["word"])))
+        rhythm_break = word_upper in rhythm_break_words and len(bucket) >= 2
         too_many_words = len(candidate_words) > max_words
         too_many_chars = len(candidate_text) > max_chars
 
@@ -258,7 +300,7 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
 
         bucket.append(item)
 
-        if punctuation_break:
+        if punctuation_break or rhythm_break:
             flush_bucket()
 
     flush_bucket()
@@ -267,8 +309,8 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
         cue["start"] = float(cue["start"])
         cue["end"] = float(cue["end"])
 
-        if cue["end"] - cue["start"] < 0.45:
-            cue["end"] = cue["start"] + 0.45
+        if cue["end"] - cue["start"] < 0.60:
+            cue["end"] = cue["start"] + 0.60
 
     return cues
 
@@ -283,7 +325,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,68,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,5,50,50,0,1
+Style: Default,Bebas Neue,74,&H00FFFFFF,&H00FFFFFF,&H00000000,&H50000000,-1,0,0,0,100,100,0,0,1,5,0,5,40,40,180,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -399,7 +441,7 @@ async def render_video(data: RenderRequest):
 
     adjusted_alignment = speed_up_alignment(data.normalized_alignment, speed_factor)
     words = build_words_from_alignment(adjusted_alignment)
-    cues = group_words_into_cues(words, max_words=8, max_chars=52)
+    cues = group_words_into_cues(words, max_words=4, max_chars=22)
     write_ass_subtitles(subtitles_path, cues)
 
     title_filter = build_title_only_filter(data.numero_regla)
