@@ -33,8 +33,7 @@ if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
 ASS_WHITE = r"\c&HFFFFFF&"
-ASS_SOFT_RED = r"\c&H6B6BFF&"  # #FF6B6B en formato ASS (BBGGRR)
-
+ASS_RED = r"\c&H0000FF&"  # #FF6B6B en formato ASS (BBGGRR)
 
 def escape_ffmpeg_path(path: str) -> str:
     return (
@@ -395,7 +394,7 @@ def build_ass_dialogue_text(groups: list, active_index: int | None = None) -> st
         for item in line:
             word_text = escape_ass_text(item["word"])
             if active_index is not None and item["index"] == active_index:
-                parts.append(r"{" + ASS_SOFT_RED + r"}" + word_text + r"{" + ASS_WHITE + r"}")
+                parts.append(r"{" + ASS_RED + r"}" + word_text + r"{" + ASS_WHITE + r"}")
             else:
                 parts.append(word_text)
         line_texts.append(" ".join(parts))
