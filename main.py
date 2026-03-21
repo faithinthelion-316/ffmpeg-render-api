@@ -134,12 +134,22 @@ def get_audio_duration(audio_path: str) -> float:
 def build_hook_start_times(num_lines: int) -> list:
     if num_lines <= 0:
         return []
+
     if num_lines == 1:
         return [0.0]
 
-    starts = [0.0, 0.4]
+    if num_lines == 2:
+        return [0.0, 0.32]
+
+    if num_lines == 3:
+        return [0.0, 0.28, 0.62]
+
+    if num_lines == 4:
+        return [0.0, 0.24, 0.52, 0.84]
+
+    starts = [0.0, 0.24, 0.52, 0.84]
     while len(starts) < num_lines:
-        starts.append(round(starts[-1] + 0.7, 2))
+        starts.append(round(starts[-1] + 0.32, 2))
 
     return starts[:num_lines]
 
