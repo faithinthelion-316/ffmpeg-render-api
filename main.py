@@ -44,6 +44,20 @@ def escape_ffmpeg_path(path: str) -> str:
     )
 
 
+def escape_drawtext_text(text: str) -> str:
+    return (
+        str(text)
+        .replace("\\", r"\\")
+        .replace(":", r"\:")
+        .replace("'", r"\'")
+        .replace("%", r"\%")
+        .replace(",", r"\,")
+        .replace("[", r"\[")
+        .replace("]", r"\]")
+        .replace("\n", r"\n")
+    )
+
+
 def get_audio_duration(audio_path: str) -> float:
     probes = [
         [
@@ -77,7 +91,30 @@ def get_audio_duration(audio_path: str) -> float:
     return 8.0
 
 
-def build_title_only_filter(numero_regla: str) -> str:
+def split_text_two_lines(text: str, max_line_chars: int = 18) -> str:
+    words = text.split()
+    if not words:
+        return text
+
+    line1 = []
+    line2 = []
+    current_len = 0
+
+    for word in words:
+        added_len = len(word) if current_len == 0 else len(word) + 1
+        if current_len + added_len <= max_line_chars or not line1:
+            line1.append(word)
+            current_len += added_len
+        else:
+            line2.append(word)
+
+    if not line2:
+        return " ".join(line1)
+
+    return " ".join(line1) + "\n" + " ".join(line2)
+
+
+def build_title_only_filter(numero_regla: str, hook: str) -> str:
     if not os.path.exists(RUNTIME_FONT_FILE):
         raise HTTPException(
             status_code=500,
@@ -85,6 +122,8 @@ def build_title_only_filter(numero_regla: str) -> str:
         )
 
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
+    hook_text = split_text_two_lines(str(hook).upper(), max_line_chars=18)
+    safe_hook = escape_drawtext_text(hook_text)
 
     return ",".join([
         (
@@ -108,7 +147,19 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
             f"y=h*0.22"
-        )        
+        ),
+        (
+            f"drawtext="
+            f"fontfile='{safe_font_path}':"
+            f"text='{safe_hook}':"
+            f"fontsize=64:"
+            f"fontcolor=white:"
+            f"borderw=3:"
+            f"bordercolor=black:"
+            f"line_spacing=12:"
+            f"x=(w-text_w)/2:"
+            f"y=h*0.33"
+        )
     ])
 
 
@@ -149,73 +200,32 @@ def build_words_from_alignment(alignment: dict) -> list:
     current_end = None
 
     for ch, st, en in zip(characters, starts, ends):
-        try:
-            st = float(st)
-            en = float(en)
-        except Exception:
-            continue
+        if current_start is None:
+            current_start = st
 
-        if str(ch).isspace():
+        if ch.strip() == "":
             if current_chars:
-                word = "".join(current_chars).strip()
-                if word:
-                    words.append({
-                        "word": word,
-                        "start": float(current_start),
-                        "end": float(current_end),
-                    })
+                words.append({
+                    "word": "".join(current_chars),
+                    "start": current_start,
+                    "end": current_end if current_end is not None else en,
+                })
                 current_chars = []
                 current_start = None
                 current_end = None
             continue
 
-        if current_start is None:
-            current_start = st
-
-        current_chars.append(str(ch))
+        current_chars.append(ch)
         current_end = en
 
     if current_chars:
-        word = "".join(current_chars).strip()
-        if word:
-            words.append({
-                "word": word,
-                "start": float(current_start),
-                "end": float(current_end),
-            })
+        words.append({
+            "word": "".join(current_chars),
+            "start": current_start,
+            "end": current_end if current_end is not None else starts[-1],
+        })
 
     return words
-
-
-def split_text_two_lines(text: str, max_line_chars: int = 26) -> str:
-    words = text.split()
-    if len(words) <= 1:
-        return text
-
-    best_split_index = None
-    best_score = None
-
-    for i in range(1, len(words)):
-        line1 = " ".join(words[:i])
-        line2 = " ".join(words[i:])
-
-        if len(line1) > max_line_chars or len(line2) > max_line_chars:
-            continue
-
-        score = abs(len(line1) - len(line2))
-        if best_score is None or score < best_score:
-            best_score = score
-            best_split_index = i
-
-    if best_split_index is None:
-        midpoint = len(words) // 2
-        line1 = " ".join(words[:midpoint])
-        line2 = " ".join(words[midpoint:])
-        return f"{line1}\\N{line2}"
-
-    line1 = " ".join(words[:best_split_index])
-    line2 = " ".join(words[best_split_index:])
-    return f"{line1}\\N{line2}"
 
 
 def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) -> list:
@@ -249,7 +259,7 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
         candidate_words = bucket + [item]
         candidate_text = " ".join(str(x["word"]) for x in candidate_words)
 
-        punctuation_break = bool(re.search(r"[.!?,;:]$", str(item["word"])))
+        punctuation_break = bool(re.search(r"[.!?,:]$", str(item["word"])))
         too_many_words = len(candidate_words) > max_words
         too_many_chars = len(candidate_text) > max_chars
 
@@ -311,6 +321,7 @@ def health():
 
 class RenderRequest(BaseModel):
     numero_regla: str
+    hook: str
     guion: str
     subtitles_mode: str = "dynamic"
     audio_base64: str
@@ -402,7 +413,7 @@ async def render_video(data: RenderRequest):
     cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
-    title_filter = build_title_only_filter(data.numero_regla)
+    title_filter = build_title_only_filter(data.numero_regla, data.hook)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
     video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
