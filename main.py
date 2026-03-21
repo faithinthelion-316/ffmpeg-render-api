@@ -163,13 +163,15 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
         safe_line = escape_drawtext_text(line)
         filters.append(
             (
+
                 f"drawtext="
                 f"fontfile='{safe_font_path}':"
                 f"text='{safe_line}':"
-                f"fontsize=72:"
+                f"fontsize=52:"
                 f"fontcolor=red:"
-                f"borderw=4:"
+                f"borderw=4:" 
                 f"bordercolor=black:"
+                f"enable='between(t,0,5)':"
                 f"x=(w-text_w)/2:"
                 f"y=h*{base_y + i * line_gap}"
             )
