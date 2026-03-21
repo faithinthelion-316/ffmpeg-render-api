@@ -33,7 +33,8 @@ if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
 ASS_WHITE = r"\c&HFFFFFF&"
-ASS_RED = r"\c&H0000FF&"  # #FF0000 en formato ASS (BBGGRR)
+ASS_RED = r"\c&H0000FF&"  # rojo sólido #FF0000 en formato ASS (BBGGRR)
+
 
 def escape_ffmpeg_path(path: str) -> str:
     return (
@@ -130,6 +131,19 @@ def get_audio_duration(audio_path: str) -> float:
     return 8.0
 
 
+def build_hook_start_times(num_lines: int) -> list:
+    if num_lines <= 0:
+        return []
+    if num_lines == 1:
+        return [0.0]
+
+    starts = [0.0, 0.4]
+    while len(starts) < num_lines:
+        starts.append(round(starts[-1] + 0.7, 2))
+
+    return starts[:num_lines]
+
+
 def build_title_only_filter(numero_regla: str, hook: str) -> str:
     if not os.path.exists(RUNTIME_FONT_FILE):
         raise HTTPException(
@@ -172,11 +186,13 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
     block_center_y = 0.40
     base_y = block_center_y - ((len(hook_lines) - 1) * line_gap / 2)
 
+    hook_start_times = build_hook_start_times(len(hook_lines))
+    end_time = 4.8
+    fade_start = 4.2
+
     for i, line in enumerate(hook_lines):
         safe_line = escape_drawtext_text(line)
-        start_time = round(i * 0.6, 2)
-        end_time = 5.0
-        fade_start = 4.6
+        start_time = hook_start_times[i]
         line_y = base_y + i * line_gap
 
         filters.append(
@@ -434,8 +450,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             flat_words = [item for line in groups for item in line]
             for item in flat_words:
-                word_start = seconds_to_ass_time(item["start"])
-                word_end = seconds_to_ass_time(max(item["end"], item["start"] + 0.05))
+                highlight_start = max(cue["start"], item["start"] - 0.08)
+                highlight_end = max(item["end"], highlight_start + 0.05)
+
+                word_start = seconds_to_ass_time(highlight_start)
+                word_end = seconds_to_ass_time(highlight_end)
                 active_text = build_ass_dialogue_text(groups, active_index=item["index"])
                 f.write(f"Dialogue: 1,{word_start},{word_end},Default,,0,0,0,,{active_text}\n")
 
