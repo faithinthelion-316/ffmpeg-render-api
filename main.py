@@ -33,7 +33,7 @@ if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
 ASS_WHITE = r"\c&HFFFFFF&"
-ASS_RED = r"\c&H0000FF&"  # #FF6B6B en formato ASS (BBGGRR)
+ASS_RED = r"\c&H0000FF&"  # #FF0000 en formato ASS (BBGGRR)
 
 def escape_ffmpeg_path(path: str) -> str:
     return (
