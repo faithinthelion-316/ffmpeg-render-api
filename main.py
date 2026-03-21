@@ -127,10 +127,11 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
         )
 
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
-    hook_text = wrap_text(str(hook).upper(), max_line_chars=14, max_lines=3)
-    safe_hook = escape_drawtext_text(hook_text)
 
-    return ",".join([
+    hook_text = wrap_text(str(hook).upper(), max_line_chars=14, max_lines=3)
+    hook_lines = [line.strip() for line in hook_text.split("\n") if line.strip()]
+
+    filters = [
         (
             f"drawtext="
             f"fontfile='{safe_font_path}':"
@@ -153,19 +154,28 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
             f"x=(w-text_w)/2:"
             f"y=h*0.22"
         ),
-        (
-            f"drawtext="
-            f"fontfile='{safe_font_path}':"
-            f"text='{safe_hook}':"
-            f"fontsize=56:"
-            f"fontcolor=red:"
-            f"borderw=4:"
-            f"bordercolor=black:"
-            f"line_spacing=12:"
-            f"x=(w-text_w)/2:"
-            f"y=h*0.30"
+    ]
+
+    base_y = 0.30
+    line_gap = 0.055
+
+    for i, line in enumerate(hook_lines):
+        safe_line = escape_drawtext_text(line)
+        filters.append(
+            (
+                f"drawtext="
+                f"fontfile='{safe_font_path}':"
+                f"text='{safe_line}':"
+                f"fontsize=52:"
+                f"fontcolor=red:"
+                f"borderw=4:"
+                f"bordercolor=black:"
+                f"x=(w-text_w)/2:"
+                f"y=h*{base_y + i * line_gap}"
+            )
         )
-    ])
+
+    return ",".join(filters)
 
 
 def seconds_to_ass_time(seconds: float) -> str:
