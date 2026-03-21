@@ -57,7 +57,23 @@ def escape_drawtext_text(text: str) -> str:
     )
 
 
-def wrap_text(text: str, max_line_chars: int = 12, max_lines: int = 3) -> list[str]:
+def estimate_text_width(text: str, fontsize: int = 70) -> float:
+    total = 0.0
+    for ch in str(text):
+        if ch == " ":
+            total += 0.34
+        elif ch in "IÍÌÏ1!¡|":
+            total += 0.32
+        elif ch in "MWÑQÓÒÖÚÙÜO0GDCÁÀÄ":
+            total += 0.78
+        elif ch in ".,;:¿?":
+            total += 0.28
+        else:
+            total += 0.58
+    return total * fontsize
+
+
+def wrap_text_by_width(text: str, fontsize: int = 70, max_width_px: int = 560) -> list:
     words = str(text).split()
     if not words:
         return [str(text)]
@@ -67,7 +83,7 @@ def wrap_text(text: str, max_line_chars: int = 12, max_lines: int = 3) -> list[s
 
     for word in words:
         candidate = " ".join(current + [word]).strip()
-        if len(candidate) <= max_line_chars or not current:
+        if not current or estimate_text_width(candidate, fontsize) <= max_width_px:
             current.append(word)
         else:
             lines.append(" ".join(current))
@@ -76,13 +92,7 @@ def wrap_text(text: str, max_line_chars: int = 12, max_lines: int = 3) -> list[s
     if current:
         lines.append(" ".join(current))
 
-    if len(lines) <= max_lines:
-        return lines
-
-    compact = lines[:max_lines - 1]
-    rest = " ".join(lines[max_lines - 1:])
-    compact.append(rest)
-    return compact
+    return lines
 
 
 def get_audio_duration(audio_path: str) -> float:
@@ -126,7 +136,10 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
         )
 
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
-    hook_lines = wrap_text(str(hook).upper(), max_line_chars=12, max_lines=3)
+
+    hook_lines = wrap_text_by_width(str(hook).upper(), fontsize=70, max_width_px=560)
+    if not hook_lines:
+        hook_lines = [str(hook).upper()]
 
     filters = [
         (
@@ -153,8 +166,9 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
         ),
     ]
 
-    base_y = 0.35
-    line_gap = 0.05
+    line_gap = 0.06
+    block_center_y = 0.40
+    base_y = block_center_y - ((len(hook_lines) - 1) * line_gap / 2)
 
     for i, line in enumerate(hook_lines):
         safe_line = escape_drawtext_text(line)
@@ -172,6 +186,9 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
                 f"fontcolor=red:"
                 f"borderw=4:"
                 f"bordercolor=black:"
+                f"box=1:"
+                f"boxcolor=0xFF6B6B@0.14:"
+                f"boxborderw=18:"
                 f"enable='between(t,{start_time},{end_time})':"
                 f"alpha='if(lt(t,{fade_start}),1,if(lt(t,{end_time}),({end_time}-t)/{end_time-fade_start},0))':"
                 f"x=(w-text_w)/2:"
