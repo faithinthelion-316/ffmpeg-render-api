@@ -144,7 +144,7 @@ def build_hook_start_times(num_lines: int) -> list:
     return starts[:num_lines]
 
 
-def build_title_only_filter(numero_regla: str, hook: str, first_subtitle_start: float | None = None) -> str:
+def build_title_only_filter(numero_regla: str, hook: str) -> str:
     if not os.path.exists(RUNTIME_FONT_FILE):
         raise HTTPException(
             status_code=500,
@@ -187,25 +187,13 @@ def build_title_only_filter(numero_regla: str, hook: str, first_subtitle_start: 
     base_y = block_center_y - ((len(hook_lines) - 1) * line_gap / 2)
 
     hook_start_times = build_hook_start_times(len(hook_lines))
-
-    default_end_time = 4.8
-    min_visible_time = 1.8
-
-    if first_subtitle_start is not None:
-        adaptive_end_time = max(min_visible_time, float(first_subtitle_start) - 0.35)
-        end_time = min(default_end_time, adaptive_end_time)
-    else:
-        end_time = default_end_time
-
-    fade_start = max(0.8, end_time - 0.6)
+    end_time = 4.8
+    fade_start = 4.2
 
     for i, line in enumerate(hook_lines):
         safe_line = escape_drawtext_text(line)
         start_time = hook_start_times[i]
         line_y = base_y + i * line_gap
-
-        if start_time >= end_time:
-            continue
 
         filters.append(
             (
@@ -459,13 +447,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 continue
 
             segments = []
-
             cue_start = float(cue["start"])
             cue_end = float(cue["end"])
             cursor = cue_start
             eps = 0.01
 
-            for idx, item in enumerate(flat_words):
+            for item in flat_words:
                 word_start = max(cue_start, float(item["start"]))
                 word_end = min(cue_end, float(item["end"]))
 
@@ -618,8 +605,7 @@ async def render_video(data: RenderRequest):
     cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
-    first_subtitle_start = float(cues[0]["start"]) if cues else None
-    title_filter = build_title_only_filter(data.numero_regla, data.hook, first_subtitle_start=first_subtitle_start)
+    title_filter = build_title_only_filter(data.numero_regla, data.hook)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
     video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
