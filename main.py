@@ -32,6 +32,9 @@ if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
 
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
+ASS_WHITE = r"\c&HFFFFFF&"
+ASS_SOFT_RED = r"\c&H6B6BFF&"  # #FF6B6B en formato ASS (BBGGRR)
+
 
 def escape_ffmpeg_path(path: str) -> str:
     return (
@@ -364,24 +367,40 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
     return cues
 
 
-def build_karaoke_ass_text(word_items: list, max_line_chars: int = 26) -> str:
-    if not word_items:
-        return ""
+def build_line_groups(word_items: list, max_line_chars: int = 26) -> list:
+    split_lines = split_word_items_two_lines(word_items, max_line_chars=max_line_chars)
+    groups = []
+    flat_index = 0
 
-    lines = split_word_items_two_lines(word_items, max_line_chars=max_line_chars)
+    for line_items in split_lines:
+        group = []
+        for item in line_items:
+            group.append({
+                "index": flat_index,
+                "word": str(item["word"]).upper(),
+                "start": float(item["start"]),
+                "end": float(item["end"]),
+            })
+            flat_index += 1
+        groups.append(group)
+
+    return groups
+
+
+def build_ass_dialogue_text(groups: list, active_index: int | None = None) -> str:
     line_texts = []
 
-    for line in lines:
-        segments = []
+    for line in groups:
+        parts = []
         for item in line:
-            duration_cs = max(1, int(round((float(item["end"]) - float(item["start"])) * 100)))
-            word_text = escape_ass_text(str(item["word"]).upper())
-            segments.append(r"{\k" + str(duration_cs) + "}" + word_text)
-        line_texts.append(" ".join(segments))
+            word_text = escape_ass_text(item["word"])
+            if active_index is not None and item["index"] == active_index:
+                parts.append(r"{" + ASS_SOFT_RED + r"}" + word_text + r"{" + ASS_WHITE + r"}")
+            else:
+                parts.append(word_text)
+        line_texts.append(" ".join(parts))
 
-    return r"{\an2\bord3\shad0\fscx100\fscy100\fsp0}" + "".join(
-        [line_texts[0]] + [r"\N" + text for text in line_texts[1:]]
-    )
+    return r"{\an2\bord3\shad0\fscx100\fscy100\fsp0" + ASS_WHITE + r"}" + r"\N".join(line_texts)
 
 
 def write_ass_subtitles(subtitles_path: str, cues: list):
@@ -394,7 +413,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,68,&H006B6BFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,50,50,380,1
+Style: Default,Bebas Neue,68,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,50,50,380,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -402,11 +421,24 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     with open(subtitles_path, "w", encoding="utf-8") as f:
         f.write(header)
+
         for cue in cues:
             start = seconds_to_ass_time(cue["start"])
             end = seconds_to_ass_time(cue["end"])
-            karaoke_text = build_karaoke_ass_text(cue.get("words", []), max_line_chars=26)
-            f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{karaoke_text}\n")
+
+            groups = build_line_groups(cue.get("words", []), max_line_chars=26)
+            if not groups:
+                continue
+
+            base_text = build_ass_dialogue_text(groups, active_index=None)
+            f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{base_text}\n")
+
+            flat_words = [item for line in groups for item in line]
+            for item in flat_words:
+                word_start = seconds_to_ass_time(item["start"])
+                word_end = seconds_to_ass_time(max(item["end"], item["start"] + 0.05))
+                active_text = build_ass_dialogue_text(groups, active_index=item["index"])
+                f.write(f"Dialogue: 1,{word_start},{word_end},Default,,0,0,0,,{active_text}\n")
 
 
 @app.get("/")
