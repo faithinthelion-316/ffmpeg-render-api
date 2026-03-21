@@ -185,7 +185,7 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
                 f"drawtext="
                 f"fontfile='{safe_font_path}':"
                 f"text='{safe_line}':"
-                f"fontsize=70:"
+                f"fontsize=57:"
                 f"fontcolor=red:"
                 f"borderw=4:"
                 f"bordercolor=black:"
