@@ -144,7 +144,7 @@ def build_hook_start_times(num_lines: int) -> list:
     return starts[:num_lines]
 
 
-def build_title_only_filter(numero_regla: str, hook: str) -> str:
+def build_title_only_filter(numero_regla: str, hook: str, first_subtitle_start: float | None = None) -> str:
     if not os.path.exists(RUNTIME_FONT_FILE):
         raise HTTPException(
             status_code=500,
@@ -187,13 +187,25 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
     base_y = block_center_y - ((len(hook_lines) - 1) * line_gap / 2)
 
     hook_start_times = build_hook_start_times(len(hook_lines))
-    end_time = 4.8
-    fade_start = 4.2
+
+    default_end_time = 4.8
+    min_visible_time = 1.8
+
+    if first_subtitle_start is not None:
+        adaptive_end_time = max(min_visible_time, float(first_subtitle_start) - 0.35)
+        end_time = min(default_end_time, adaptive_end_time)
+    else:
+        end_time = default_end_time
+
+    fade_start = max(0.8, end_time - 0.6)
 
     for i, line in enumerate(hook_lines):
         safe_line = escape_drawtext_text(line)
         start_time = hook_start_times[i]
         line_y = base_y + i * line_gap
+
+        if start_time >= end_time:
+            continue
 
         filters.append(
             (
@@ -438,25 +450,67 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         f.write(header)
 
         for cue in cues:
-            start = seconds_to_ass_time(cue["start"])
-            end = seconds_to_ass_time(cue["end"])
-
             groups = build_line_groups(cue.get("words", []), max_line_chars=26)
             if not groups:
                 continue
 
-            base_text = build_ass_dialogue_text(groups, active_index=None)
-            f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{base_text}\n")
-
             flat_words = [item for line in groups for item in line]
-            for item in flat_words:
-                highlight_start = max(cue["start"], item["start"] - 0.08)
-                highlight_end = max(item["end"], highlight_start + 0.05)
+            if not flat_words:
+                continue
 
-                word_start = seconds_to_ass_time(highlight_start)
-                word_end = seconds_to_ass_time(highlight_end)
-                active_text = build_ass_dialogue_text(groups, active_index=item["index"])
-                f.write(f"Dialogue: 1,{word_start},{word_end},Default,,0,0,0,,{active_text}\n")
+            segments = []
+
+            cue_start = float(cue["start"])
+            cue_end = float(cue["end"])
+            cursor = cue_start
+            eps = 0.01
+
+            for idx, item in enumerate(flat_words):
+                word_start = max(cue_start, float(item["start"]))
+                word_end = min(cue_end, float(item["end"]))
+
+                if word_start > cursor + eps:
+                    segments.append({
+                        "start": cursor,
+                        "end": word_start,
+                        "active_index": None,
+                    })
+
+                if word_end > word_start + eps:
+                    segments.append({
+                        "start": word_start,
+                        "end": word_end,
+                        "active_index": item["index"],
+                    })
+
+                cursor = max(cursor, word_end)
+
+            if cue_end > cursor + eps:
+                segments.append({
+                    "start": cursor,
+                    "end": cue_end,
+                    "active_index": None,
+                })
+
+            merged_segments = []
+            for seg in segments:
+                if seg["end"] <= seg["start"] + eps:
+                    continue
+
+                if (
+                    merged_segments
+                    and merged_segments[-1]["active_index"] == seg["active_index"]
+                    and abs(merged_segments[-1]["end"] - seg["start"]) <= eps
+                ):
+                    merged_segments[-1]["end"] = seg["end"]
+                else:
+                    merged_segments.append(seg)
+
+            for seg in merged_segments:
+                start = seconds_to_ass_time(seg["start"])
+                end = seconds_to_ass_time(seg["end"])
+                text = build_ass_dialogue_text(groups, active_index=seg["active_index"])
+                f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}\n")
 
 
 @app.get("/")
@@ -564,7 +618,8 @@ async def render_video(data: RenderRequest):
     cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
-    title_filter = build_title_only_filter(data.numero_regla, data.hook)
+    first_subtitle_start = float(cues[0]["start"]) if cues else None
+    title_filter = build_title_only_filter(data.numero_regla, data.hook, first_subtitle_start=first_subtitle_start)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
     video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
