@@ -109,7 +109,7 @@ def build_title_only_filter(numero_regla: str) -> str:
             f"x=(w-text_w)/2:"
             f"y=h*0.22"
         ),
-                (
+        (
             f"drawtext="
             f"fontfile='{safe_font_path}':"
             f"text='#{hook}':"
