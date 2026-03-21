@@ -186,9 +186,6 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
                 f"fontcolor=red:"
                 f"borderw=4:"
                 f"bordercolor=black:"
-                f"box=1:"
-                f"boxcolor=0xFF6B6B@0.14:"
-                f"boxborderw=18:"
                 f"enable='between(t,{start_time},{end_time})':"
                 f"alpha='if(lt(t,{fade_start}),1,if(lt(t,{end_time}),({end_time}-t)/{end_time-fade_start},0))':"
                 f"x=(w-text_w)/2:"
@@ -207,7 +204,12 @@ def seconds_to_ass_time(seconds: float) -> str:
 
 
 def escape_ass_text(text: str) -> str:
-    return text.replace("{", r"\{").replace("}", r"\}")
+    return (
+        str(text)
+        .replace("\\", r"\\")
+        .replace("{", r"\{")
+        .replace("}", r"\}")
+    )
 
 
 def speed_up_alignment(alignment: dict, speed: float) -> dict:
@@ -274,10 +276,13 @@ def build_words_from_alignment(alignment: dict) -> list:
     return words
 
 
-def split_text_two_lines(text: str, max_line_chars: int = 26) -> str:
-    words = text.split()
+def split_word_items_two_lines(word_items: list, max_line_chars: int = 26) -> list:
+    if not word_items:
+        return []
+
+    words = [str(item["word"]) for item in word_items]
     if len(words) <= 1:
-        return text
+        return [word_items]
 
     best_split_index = None
     best_score = None
@@ -296,13 +301,9 @@ def split_text_two_lines(text: str, max_line_chars: int = 26) -> str:
 
     if best_split_index is None:
         midpoint = len(words) // 2
-        line1 = " ".join(words[:midpoint])
-        line2 = " ".join(words[midpoint:])
-        return f"{line1}\\N{line2}"
+        return [word_items[:midpoint], word_items[midpoint:]]
 
-    line1 = " ".join(words[:best_split_index])
-    line2 = " ".join(words[best_split_index:])
-    return f"{line1}\\N{line2}"
+    return [word_items[:best_split_index], word_items[best_split_index:]]
 
 
 def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) -> list:
@@ -319,15 +320,18 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
             start_value = float(bucket[0]["start"])
             end_value = float(bucket[-1]["end"])
 
-            if len(raw_text) > 26:
-                cue_text = split_text_two_lines(raw_text.upper(), max_line_chars=26)
-            else:
-                cue_text = raw_text.upper()
-
             cues.append({
-                "text": cue_text,
+                "text": raw_text.upper(),
                 "start": start_value,
                 "end": end_value,
+                "words": [
+                    {
+                        "word": str(item["word"]).upper(),
+                        "start": float(item["start"]),
+                        "end": float(item["end"]),
+                    }
+                    for item in bucket
+                ],
             })
 
         bucket = []
@@ -360,6 +364,26 @@ def group_words_into_cues(words: list, max_words: int = 8, max_chars: int = 52) 
     return cues
 
 
+def build_karaoke_ass_text(word_items: list, max_line_chars: int = 26) -> str:
+    if not word_items:
+        return ""
+
+    lines = split_word_items_two_lines(word_items, max_line_chars=max_line_chars)
+    line_texts = []
+
+    for line in lines:
+        segments = []
+        for item in line:
+            duration_cs = max(1, int(round((float(item["end"]) - float(item["start"])) * 100)))
+            word_text = escape_ass_text(str(item["word"]).upper())
+            segments.append(r"{\k" + str(duration_cs) + "}" + word_text)
+        line_texts.append(" ".join(segments))
+
+    return r"\an2" + r"\bord3" + r"\shad0" + r"\fscx100" + r"\fscy100" + r"\fsp0" + "".join(
+        [line_texts[0]] + [r"\N" + text for text in line_texts[1:]]
+    )
+
+
 def write_ass_subtitles(subtitles_path: str, cues: list):
     header = """[Script Info]
 ScriptType: v4.00+
@@ -370,7 +394,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,68,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,50,50,380,1
+Style: Default,Bebas Neue,68,&H006B6BFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,50,50,380,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -381,8 +405,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         for cue in cues:
             start = seconds_to_ass_time(cue["start"])
             end = seconds_to_ass_time(cue["end"])
-            text = escape_ass_text(cue["text"])
-            f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}\n")
+            karaoke_text = build_karaoke_ass_text(cue.get("words", []), max_line_chars=26)
+            f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{karaoke_text}\n")
 
 
 @app.get("/")
