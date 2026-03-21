@@ -156,7 +156,7 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
         ),
     ]
 
-    base_y = 0.37
+    base_y = 0.35
     line_gap = 0.055
 
     for i, line in enumerate(hook_lines):
