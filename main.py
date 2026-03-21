@@ -379,7 +379,7 @@ def build_karaoke_ass_text(word_items: list, max_line_chars: int = 26) -> str:
             segments.append(r"{\k" + str(duration_cs) + "}" + word_text)
         line_texts.append(" ".join(segments))
 
-    return r"\an2" + r"\bord3" + r"\shad0" + r"\fscx100" + r"\fscy100" + r"\fsp0" + "".join(
+    return r"{\an2\bord3\shad0\fscx100\fscy100\fsp0}" + "".join(
         [line_texts[0]] + [r"\N" + text for text in line_texts[1:]]
     )
 
