@@ -156,7 +156,7 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
         ),
     ]
 
-    base_y = 0.30
+    base_y = 0.35
     line_gap = 0.055
 
     for i, line in enumerate(hook_lines):
@@ -166,7 +166,7 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
                 f"drawtext="
                 f"fontfile='{safe_font_path}':"
                 f"text='{safe_line}':"
-                f"fontsize=52:"
+                f"fontsize=72:"
                 f"fontcolor=red:"
                 f"borderw=4:"
                 f"bordercolor=black:"
