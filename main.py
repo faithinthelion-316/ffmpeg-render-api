@@ -197,7 +197,7 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
     base_y = block_center_y - ((len(hook_lines) - 1) * line_gap / 2)
 
     hook_start_times = build_hook_start_times(len(hook_lines))
-    end_time = 6.5
+    end_time = 6.0
     fade_start = 5.0
 
     for i, line in enumerate(hook_lines):
