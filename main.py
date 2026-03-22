@@ -47,57 +47,6 @@ def escape_ffmpeg_path(path: str) -> str:
     )
 
 
-def escape_drawtext_text(text: str) -> str:
-    return (
-        str(text)
-        .replace("\\", r"\\")
-        .replace(":", r"\:")
-        .replace("'", r"\'")
-        .replace("%", r"\%")
-        .replace(",", r"\,")
-        .replace("[", r"\[")
-        .replace("]", r"\]")
-    )
-
-
-def estimate_text_width(text: str, fontsize: int = 70) -> float:
-    total = 0.0
-    for ch in str(text):
-        if ch == " ":
-            total += 0.34
-        elif ch in "IÍÌÏ1!¡|":
-            total += 0.32
-        elif ch in "MWÑQÓÒÖÚÙÜO0GDCÁÀÄ":
-            total += 0.78
-        elif ch in ".:¿?":
-            total += 0.28
-        else:
-            total += 0.58
-    return total * fontsize
-
-
-def wrap_text_by_width(text: str, fontsize: int = 70, max_width_px: int = 560) -> list:
-    words = str(text).split()
-    if not words:
-        return [str(text)]
-
-    lines = []
-    current = []
-
-    for word in words:
-        candidate = " ".join(current + [word]).strip()
-        if not current or estimate_text_width(candidate, fontsize) <= max_width_px:
-            current.append(word)
-        else:
-            lines.append(" ".join(current))
-            current = [word]
-
-    if current:
-        lines.append(" ".join(current))
-
-    return lines
-
-
 def get_audio_duration(audio_path: str) -> float:
     probes = [
         [
@@ -131,30 +80,7 @@ def get_audio_duration(audio_path: str) -> float:
     return 8.0
 
 
-def build_hook_start_times(num_lines: int) -> list:
-    if num_lines <= 0:
-        return []
-
-    if num_lines == 1:
-        return [0.0]
-
-    if num_lines == 2:
-        return [0.0, 0.0]
-
-    if num_lines == 3:
-        return [0.0, 0.0, 0.0]
-
-    if num_lines == 4:
-        return [0.0, 0.0, 0.0, 0.0]
-
-    starts = [0.0, 0.0, 0.0, 0.0]
-    while len(starts) < num_lines:
-        starts.append(round(starts[-1] + 0.8, 2))
-
-    return starts[:num_lines]
-
-
-def build_title_only_filter(numero_regla: str, hook: str) -> str:
+def build_title_only_filter(numero_regla: str) -> str:
     if not os.path.exists(RUNTIME_FONT_FILE):
         raise HTTPException(
             status_code=500,
@@ -490,7 +416,7 @@ def health():
 
 class RenderRequest(BaseModel):
     numero_regla: str
-    hook: str
+    hook: str = ""
     guion: str
     subtitles_mode: str = "dynamic"
     audio_base64: str
@@ -582,7 +508,7 @@ async def render_video(data: RenderRequest):
     cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
-    title_filter = build_title_only_filter(data.numero_regla, data.hook)
+    title_filter = build_title_only_filter(data.numero_regla)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
     video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
