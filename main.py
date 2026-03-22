@@ -618,7 +618,7 @@ async def render_video(data: RenderRequest):
     title_filter = ""
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
-    video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
+    video_filter = f"subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
     render_mode = "title_plus_dynamic_subtitles"
 
     ffmpeg_cmd = [
