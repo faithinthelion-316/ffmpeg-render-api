@@ -139,15 +139,15 @@ def build_hook_start_times(num_lines: int) -> list:
         return [0.0]
 
     if num_lines == 2:
-        return [0.0, 2.0]
+        return [0.0, 1.5]
 
     if num_lines == 3:
-        return [0.0, 2.0, 3.0]
+        return [0.0, 1.5, 2.5]
 
     if num_lines == 4:
-        return [0.0, 2.0, 3.0, 4.0]
+        return [0.0, 1.5, 2.5, 3.5]
 
-    starts = [0.0, 2.0, 3.0, 4.0]
+    starts = [0.0, 1.5, 2.5, 3.5]
     while len(starts) < num_lines:
         starts.append(round(starts[-1] + 0.8, 2))
 
@@ -198,7 +198,7 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
 
     hook_start_times = build_hook_start_times(len(hook_lines))
     end_time = 6.0
-    fade_start = 5.5
+    fade_start = 4.5
 
     for i, line in enumerate(hook_lines):
         safe_line = escape_drawtext_text(line)
