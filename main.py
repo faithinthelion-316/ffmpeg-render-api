@@ -69,7 +69,7 @@ def estimate_text_width(text: str, fontsize: int = 70) -> float:
             total += 0.32
         elif ch in "MWÑQÓÒÖÚÙÜO0GDCÁÀÄ":
             total += 0.78
-        elif ch in ".,;:¿?":
+        elif ch in ".:¿?":
             total += 0.28
         else:
             total += 0.58
@@ -163,10 +163,6 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
 
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
 
-    hook_lines = wrap_text_by_width(str(hook).upper(), fontsize=70, max_width_px=560)
-    if not hook_lines:
-        hook_lines = [str(hook).upper()]
-
     filters = [
         (
             f"drawtext="
@@ -177,7 +173,7 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
             f"borderw=2:"
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.17"
+            f"y=h*0.15"
         ),
         (
             f"drawtext="
@@ -188,38 +184,9 @@ def build_title_only_filter(numero_regla: str, hook: str) -> str:
             f"borderw=4:"
             f"bordercolor=black:"
             f"x=(w-text_w)/2:"
-            f"y=h*0.22"
+            f"y=h*0.20"
         ),
     ]
-
-    line_gap = 0.06
-    block_center_y = 0.40
-    base_y = block_center_y - ((len(hook_lines) - 1) * line_gap / 2)
-
-    hook_start_times = build_hook_start_times(len(hook_lines))
-    end_time = 4.5
-    fade_start = 3.5
-
-    for i, line in enumerate(hook_lines):
-        safe_line = escape_drawtext_text(line)
-        start_time = hook_start_times[i]
-        line_y = base_y + i * line_gap
-
-        filters.append(
-            (
-                f"drawtext="
-                f"fontfile='{safe_font_path}':"
-                f"text='{safe_line}':"
-                f"fontsize=57:"
-                f"fontcolor=red:"
-                f"borderw=4:"
-                f"bordercolor=black:"
-                f"enable='between(t,{start_time},{end_time})':"
-                f"alpha='if(lt(t,{fade_start}),1,if(lt(t,{end_time}),({end_time}-t)/{end_time-fade_start},0))':"
-                f"x=(w-text_w)/2:"
-                f"y=h*{line_y}"
-            )
-        )
 
     return ",".join(filters)
 
@@ -615,10 +582,10 @@ async def render_video(data: RenderRequest):
     cues = group_words_into_cues(words, max_words=8, max_chars=52)
     write_ass_subtitles(subtitles_path, cues)
 
-    title_filter = ""
+    title_filter = build_title_only_filter(data.numero_regla, data.hook)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
-    video_filter = f"subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
+    video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
     render_mode = "title_plus_dynamic_subtitles"
 
     ffmpeg_cmd = [
