@@ -17,7 +17,7 @@ AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
 
-MUSIC_FILE = "/app/music/backgroundRi.mp3"
+MUSIC_FILE = "/app/music/background.mp3"
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
@@ -93,7 +93,7 @@ def build_title_only_filter(numero_regla: str) -> str:
         (
             f"drawtext="
             f"fontfile='{safe_font_path}':"
-            f"text='REGLA INVISIBLE':"
+            f"text='VERDAD':"
             f"fontsize=57:"
             f"fontcolor=white:"
             f"borderw=2:"
