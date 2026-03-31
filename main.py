@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import base64
 import re
-import urllib.request
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -17,14 +16,12 @@ BASE_DIR = "/tmp/ffmpeg_render"
 AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
-IMAGE_DIR = os.path.join(BASE_DIR, "images")
 
 MUSIC_FILE = "/app/music/background.mp3"
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(FONTS_DIR, exist_ok=True)
-os.makedirs(IMAGE_DIR, exist_ok=True)
 
 APP_FONTS_DIR = "/app/fonts"
 APP_FONT_FILE = os.path.join(APP_FONTS_DIR, "BebasNeue-Regular.ttf")
@@ -36,7 +33,7 @@ if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
 ASS_WHITE = r"\c&HFFFFFF&"
-ASS_RED = r"\c&H0000FF&"
+ASS_RED = r"\c&H0000FF&"  # rojo sólido #FF0000 en formato ASS (BBGGRR)
 
 
 def escape_ffmpeg_path(path: str) -> str:
@@ -81,45 +78,6 @@ def get_audio_duration(audio_path: str) -> float:
                     pass
 
     return 8.0
-
-
-def download_image(image_url: str, job_id: str) -> str:
-    image_path = os.path.join(IMAGE_DIR, f"{job_id}.jpg")
-    urllib.request.urlretrieve(image_url, image_path)
-    return image_path
-
-
-def prepare_background(image_path: str, job_id: str, duration: float) -> str:
-    bg_path = os.path.join(IMAGE_DIR, f"{job_id}_bg.mp4")
-
-    cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel", "error",
-        "-y",
-        "-loop", "1",
-        "-i", image_path,
-        "-t", str(duration),
-        "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p",
-        "-r", "24",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "28",
-        bg_path
-    ]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": "Error preparando imagen de fondo",
-                "stderr": result.stderr,
-            }
-        )
-
-    return bg_path
 
 
 def build_title_only_filter(numero_regla: str) -> str:
@@ -463,7 +421,6 @@ class RenderRequest(BaseModel):
     subtitles_mode: str = "dynamic"
     audio_base64: str
     normalized_alignment: dict
-    image_url: str = ""
 
 
 @app.post("/render")
@@ -554,71 +511,31 @@ async def render_video(data: RenderRequest):
     title_filter = build_title_only_filter(data.numero_regla)
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
+    video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
+    render_mode = "title_plus_dynamic_subtitles"
 
-    use_image = bool(data.image_url and data.image_url.strip())
-
-    if use_image:
-        try:
-            image_path = download_image(data.image_url, job_id)
-        except Exception as e:
-            use_image = False
-
-    if use_image:
-        # Fondo: imagen con overlay oscuro al 55%
-        overlay_filter = "colorchannelmixer=rr=0.45:gg=0.45:bb=0.45"
-        video_filter = f"{overlay_filter},{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
-        render_mode = "image_background"
-
-        bg_video_path = prepare_background(image_path, job_id, audio_duration)
-
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel", "error",
-            "-y",
-            "-i", bg_video_path,
-            "-i", normalized_audio_path,
-            "-vf", video_filter,
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "28",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-ar", "44100",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-shortest",
-            video_path
-        ]
-    else:
-        # Fallback: fondo negro si no hay imagen
-        video_filter = f"{title_filter},subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'"
-        render_mode = "black_background"
-
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel", "error",
-            "-y",
-            "-f", "lavfi",
-            "-i", f"color=c=black:s=720x1280:r=24:d={audio_duration}",
-            "-i", normalized_audio_path,
-            "-vf", video_filter,
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "28",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-ar", "44100",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-shortest",
-            video_path
-        ]
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        "-f", "lavfi",
+        "-i", f"color=c=black:s=720x1280:r=24:d={audio_duration}",
+        "-i", normalized_audio_path,
+        "-vf", video_filter,
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "28",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-ar", "44100",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        "-shortest",
+        video_path
+    ]
 
     result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
 
@@ -659,6 +576,5 @@ async def render_video(data: RenderRequest):
         "render_mode": render_mode,
         "cues_count": len(cues),
         "speed_factor": speed_factor,
-        "music_used": os.path.exists(MUSIC_FILE),
-        "image_used": use_image
+        "music_used": os.path.exists(MUSIC_FILE)
     }
