@@ -44,7 +44,7 @@ CTA_CARD_DURATION = 2.75
 
 TRUTH_PUNCH_DURATION = 2.15
 
-AI_VIDEO_READABILITY_FILTER = "colorchannelmixer=rr=0.78:gg=0.78:bb=0.78"
+AI_VIDEO_READABILITY_FILTER = "eq=contrast=1.04:saturation=1.10"
 
 FPS = 24
 OUTPUT_WIDTH = 720
@@ -65,44 +65,59 @@ if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
 
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
-ASS_WHITE = r"\c&HFFFFFF&"
-ASS_GOLD = r"\c&H5AC1E6&"
+ASS_WHITE = r"\c&HFFF7F4&"  # #F4F7FF cold white, ASS BGR
+ASS_GOLD = r"\c&HFFE500&"   # #00E5FF neon cyan, ASS BGR
 
 IMPACT_WORDS = {
-    "DIOS",
-    "NO",
+    "MEMORIA",
+    "RECUERDO",
+    "RECUERDOS",
+    "RENTA",
+    "ALQUILER",
+    "CIUDAD",
+    "SISTEMA",
+    "FUTURO",
+    "HUMANO",
+    "HUMANA",
+    "HUMANOS",
+    "REAL",
+    "SINTÉTICO",
+    "SINTETICO",
+    "ILEGAL",
+    "PROHIBIDO",
+    "VENDIÓ",
+    "VENDIO",
+    "VENDIDA",
+    "VENDER",
+    "COMPRÓ",
+    "COMPRO",
+    "BORRÓ",
+    "BORRO",
+    "PERDIÓ",
+    "PERDIO",
+    "OLVIDÓ",
+    "OLVIDO",
+    "AMOR",
+    "MADRE",
+    "PADRE",
+    "FAMILIA",
+    "CUERPO",
+    "ROSTRO",
+    "IDENTIDAD",
+    "VIDA",
+    "MUERTE",
+    "EMOCIÓN",
+    "EMOCION",
+    "MENTIRA",
     "VERDAD",
-    "PAZ",
-    "CULPA",
-    "MIEDO",
-    "PECADO",
-    "CONTROL",
-    "DOLOR",
-    "HERIDA",
-    "SOMBRA",
-    "ALMA",
-    "OBEDECER",
-    "OBEDIENCIA",
-    "ARREPENTIMIENTO",
-    "GRACIA",
-    "PERDON",
-    "PERDÓN",
-    "SANAR",
-    "SANA",
-    "SANÓ",
-    "SANO",
-    "ROTO",
-    "ROTA",
-    "ESCONDIDO",
-    "ESCONDES",
-    "EXAMÍNAME",
-    "EXAMINAME",
-    "VUELVE",
-    "VOLVER",
-    "HUIR",
-    "HUÍA",
-    "HUIA",
-    "TORMENTA",
+    "POBRE",
+    "LUJO",
+    "PISO",
+    "DISTRITO",
+    "ARCHIVO",
+    "CRÉDITO",
+    "CREDITO",
+    "NOVA",
 }
 
 
@@ -161,7 +176,7 @@ def split_headline(text: str) -> tuple[str, str]:
     words = clean_display_text(text, max_words=5).split()
 
     if not words:
-        return "NO SIGAS", "IGUAL"
+        return "NO ERA", "DINERO"
 
     if len(words) == 1:
         return "", words[0]
@@ -179,39 +194,37 @@ def split_headline(text: str) -> tuple[str, str]:
 
 def build_hook_impact_lines(text: str) -> list[str]:
     """
-    Hook card layout: always 3 vertical impact lines.
+    Hook HUD layout: always 3 vertical impact hits.
 
     Target structure:
     - line 1: max 1 word
     - line 2: 1-2 words
     - line 3: max 1 word
 
-    If the incoming hook_visual_text only has 2 words, we add a compact
-    possessive opener so the first scene keeps the intended 3-step rhythm:
-    TU / MIEDO / ENCADENA.
+    The input should be 3-4 words. If it arrives shorter, a compact
+    system-style opener is added to preserve the 3-hit retention rhythm.
     """
     words = clean_display_text(text, max_words=4).split()
 
     if not words:
-        return ["NO", "SIGAS", "IGUAL"]
+        return ["NO", "ERA", "DINERO"]
 
     if len(words) == 1:
-        return ["NO", words[0], "IGUAL"]
+        return ["NO", words[0], "HOY"]
 
     if len(words) == 2:
-        return ["TU", words[0], words[1]]
+        return ["LA", words[0], words[1]]
 
     if len(words) == 3:
         return [words[0], words[1], words[2]]
 
     return [words[0], " ".join(words[1:-1]), words[-1]]
 
-
 def split_truth_punch_lines(text: str) -> list[str]:
     words = clean_display_text(text, max_words=4).split()
 
     if not words:
-        return ["DIOS", "LO VIO"]
+        return ["NO ERA", "DINERO"]
 
     if len(words) == 1:
         return [words[0]]
@@ -229,7 +242,7 @@ def split_cta_phrase_lines(text: str) -> list[str]:
     words = clean_display_text(text, max_words=4).split()
 
     if not words:
-        return ["DIOS", "EXAMÍNAME"]
+        return ["SÍ", "NO"]
 
     if len(words) <= 2:
         return [" ".join(words)]
@@ -268,55 +281,73 @@ def extract_quoted_cta(call_to_action: str, hook: str = "", guion: str = "") -> 
         if phrase:
             return phrase
 
-    if "control" in context or "controlar" in context or "soltar" in context:
-        return "RENUNCIO AL CONTROL"
+    if "memoria" in context or "recuerdo" in context:
+        return "RECORDAR / SOBREVIVIR"
 
-    if "obedec" in context:
-        return "QUIERO OBEDECER"
+    if "renta" in context or "alquiler" in context or "casa" in context:
+        return "MEMORIA / CASA"
 
-    if "tarsis" in context or "huir" in context or "huía" in context or "huia" in context or "regresar" in context or "volver" in context:
-        return "HAZME VOLVER"
+    if "amor" in context or "pareja" in context:
+        return "AMOR / SISTEMA"
 
-    if "examin" in context or "calma" in context or "paz" in context:
-        return "DIOS, EXAMÍNAME"
+    if "cuerpo" in context or "rostro" in context or "identidad" in context:
+        return "CUERPO / IDENTIDAD"
 
-    if "sana" in context or "herida" in context or "dolor" in context:
-        return "SANA MI CORAZÓN"
+    if "humano" in context or "real" in context:
+        return "HUMANO / SISTEMA"
 
-    if "guía" in context or "guia" in context or "dirección" in context or "direccion" in context:
-        return "SEÑOR, GUÍAME"
-
-    if "miedo" in context or "temor" in context:
-        return "NO TENGO MIEDO"
-
-    return "DIOS, EXAMÍNAME"
-
+    return "SÍ / NO"
 
 
 
 def extract_cta_visual_parts(call_to_action: str, hook: str = "", guion: str = "") -> tuple[str, str]:
     """
-    Returns a dynamic CTA label and visual phrase.
+    Returns a dynamic polarizing CTA label and visual phrase.
 
-    Examples:
-    - Comenta “renuncio al control” si... -> (COMENTA, RENUNCIO AL CONTROL)
-    - Escribe “Dios, guíame” si... -> (ESCRIBE, DIOS, GUÍAME)
-    - Sígueme si quieres... -> (SÍGUEME, short fallback phrase)
+    Preferred formats for this channel:
+    - ELIGE: RECORDAR / SOBREVIVIR
+    - ¿LO HARÍAS? SÍ / NO
+    - COMENTA: MEMORIA / CASA
     """
     text = str(call_to_action or "").strip()
 
-    label = "COMENTA"
-    first_word_match = re.search(r"\S+", text)
-    if first_word_match:
-        label_candidate = clean_display_text(first_word_match.group(0), max_words=1)
-        if label_candidate:
-            label = label_candidate
+    if not text:
+        return "ELIGE", extract_quoted_cta(call_to_action, hook=hook, guion=guion)
 
     quoted = re.search(r"[“\"]([^”\"]{2,80})[”\"]", text)
     if quoted:
         phrase = clean_display_text(quoted.group(1), max_words=4)
         if phrase:
+            first_word_match = re.search(r"\S+", text)
+            label = "COMENTA"
+            if first_word_match:
+                label_candidate = clean_display_text(first_word_match.group(0), max_words=1).replace(":", "")
+                if label_candidate:
+                    label = label_candidate
             return label, phrase
+
+    # Dilemma format: "ELIGE: A / B" or "DECIDE: A / B"
+    dilemma_match = re.search(
+        r"\b(ELIGE|DECIDE|VOTA|COMENTA)\b\s*:?\s*(.{2,80})",
+        text,
+        flags=re.IGNORECASE
+    )
+    if dilemma_match:
+        label = clean_display_text(dilemma_match.group(1), max_words=1).replace(":", "")
+        phrase = clean_display_text(dilemma_match.group(2), max_words=4)
+        if phrase:
+            return label, phrase
+
+    # Question format: "¿Venderías tu memoria...?"
+    if "?" in text or "¿" in text:
+        return "¿LO HARÍAS?", "SÍ / NO"
+
+    first_word_match = re.search(r"\S+", text)
+    label = "ELIGE"
+    if first_word_match:
+        label_candidate = clean_display_text(first_word_match.group(0), max_words=1).replace(":", "")
+        if label_candidate:
+            label = label_candidate
 
     remainder = re.sub(r"^\S+", "", text).strip()
     remainder = re.split(r"\bsi\b|\bpara\b", remainder, flags=re.IGNORECASE)[0].strip() or remainder
@@ -327,43 +358,38 @@ def extract_cta_visual_parts(call_to_action: str, hook: str = "", guion: str = "
 
     return label, phrase
 
+
 def extract_truth_punch_text(guion: str) -> str:
     text = str(guion or "").strip().lower()
 
-    if "control" in text or "controlar" in text or "mandaba" in text or "ruta" in text:
-        return "ERA MIEDO"
+    if "memoria" in text or "recuerdo" in text:
+        return "ERA MEMORIA"
 
-    if "tarsis" in text or "huía" in text or "huia" in text or "huir" in text or "puerto" in text:
-        return "HUÍA DE DIOS"
+    if "renta" in text or "alquiler" in text or "casa" in text:
+        return "NO ERA DINERO"
 
-    if "tormenta" in text or "viento" in text or "mar" in text or "nave" in text:
-        return "DIOS LO DETUVO"
+    if "ciudad" in text or "sistema" in text:
+        return "LA CIUDAD COBRÓ"
 
-    if "calma" in text or "paz" in text or "alivio" in text or "descanso" in text:
-        return "NO ERA PAZ"
+    if "amor" in text or "pareja" in text:
+        return "AMOR SINTÉTICO"
 
-    if "verdad" in text or "confrontar" in text or "enfrentar" in text:
-        return "LA VERDAD DUELE"
+    if "humano" in text or "real" in text:
+        return "SEGUÍA SIENDO HUMANO"
 
-    if "miedo" in text or "temor" in text:
-        return "ERA MIEDO"
+    if "ilegal" in text or "prohibido" in text:
+        return "ERA ILEGAL"
 
-    if "obedec" in text:
-        return "TOCABA OBEDECER"
+    if "madre" in text or "padre" in text or "familia" in text:
+        return "PERDIÓ SU ORIGEN"
 
-    if "culpa" in text or "escond" in text:
-        return "DIOS LO VIO"
+    if "cuerpo" in text or "rostro" in text or "identidad" in text:
+        return "CAMBIÓ SU IDENTIDAD"
 
-    if "dolor" in text or "herida" in text:
-        return "AÚN DOLÍA"
+    if "pobre" in text or "lujo" in text:
+        return "LA CIUDAD DIVIDIÓ"
 
-    if "perdón" in text or "perdon" in text:
-        return "GRACIA INMERECIDA"
-
-    if "orgullo" in text or "soberbia" in text:
-        return "ORGULLO ROTO"
-
-    return "DIOS LO VIO"
+    return "NO ERA DINERO"
 
 
 def compute_truth_punch_window(voice_duration: float) -> tuple[float, float] | None:
@@ -760,6 +786,10 @@ def build_background_from_images(
 
 
 def build_reference_filter(referencia_biblica: str, start_time: float = REFERENCE_START_TIME) -> str:
+    """
+    Keeps the existing request field name for Make compatibility, but renders it
+    as a futuristic location/time stamp for this channel.
+    """
     if not referencia_biblica or not referencia_biblica.strip():
         return ""
 
@@ -772,18 +802,28 @@ def build_reference_filter(referencia_biblica: str, start_time: float = REFERENC
     if not safe_text:
         return ""
 
+    # Bottom-left HUD metadata stamp. It is intentionally lower hierarchy than
+    # active captions: cold gray text + muted teal accent.
     return (
+        f"drawbox="
+        f"x=34:y=h*0.805:w=652:h=74:"
+        f"color=black@0.34:t=fill:"
+        f"enable='gte(t\\,{start_time:.2f})',"
+        f"drawbox="
+        f"x=34:y=h*0.805:w=5:h=74:"
+        f"color=0x4BB8C8@0.72:t=fill:"
+        f"enable='gte(t\\,{start_time:.2f})',"
         f"drawtext="
         f"fontfile='{safe_font_path}':"
         f"text='{safe_text}':"
-        f"fontsize=36:"
-        f"fontcolor=0xD8D8D8:"
+        f"fontsize=32:"
+        f"fontcolor=0xB8C7D9:"
         f"borderw=2:"
         f"bordercolor=black:"
         f"shadowx=2:"
         f"shadowy=2:"
-        f"x=(w-text_w)/2:"
-        f"y=h*0.842:"
+        f"x=52:"
+        f"y=h*0.822:"
         f"enable='gte(t\\,{start_time:.2f})'"
     )
 
@@ -848,7 +888,7 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
     safe_lines = [escape_drawtext_value(x) for x in lines if x and x.strip()]
 
     if len(safe_lines) < 3:
-        safe_lines = ["NO", "SIGAS", "IGUAL"]
+        safe_lines = ["NO", "ERA", "DINERO"]
 
     first, second, third = safe_lines[:3]
 
@@ -856,10 +896,15 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
     enable_card = f"between(t\\,{HOOK_CARD_START:.2f}\\,{HOOK_CARD_END:.2f})"
 
     filters = [
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.90:t=fill:enable='{enable_flash}'",
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.40:t=fill:enable='{enable_card}'",
-        f"drawbox=x=22:y=225:w=676:h=760:color=black@0.70:t=fill:enable='{enable_card}'",
-        f"drawbox=x=22:y=225:w=676:h=760:color=0xDFAF37@0.27:t=6:enable='{enable_card}'",
+        # Short system-flash, much lighter than the original LBN blackout.
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.34:t=fill:enable='{enable_flash}'",
+        # Global dim keeps text legible without killing the first visual frame.
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.22:t=fill:enable='{enable_card}'",
+        # Large futuristic HUD impact panel.
+        f"drawbox=x=28:y=220:w=664:h=750:color=black@0.48:t=fill:enable='{enable_card}'",
+        f"drawbox=x=28:y=220:w=6:h=750:color=0x00E5FF@0.82:t=fill:enable='{enable_card}'",
+        f"drawbox=x=28:y=220:w=664:h=3:color=0x00E5FF@0.36:t=fill:enable='{enable_card}'",
+        f"drawbox=x=28:y=967:w=664:h=3:color=0x00E5FF@0.30:t=fill:enable='{enable_card}'",
     ]
 
     first_size = adjust_font_size_for_text(first, 112, min_size=82)
@@ -871,7 +916,7 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
         safe_font_path=safe_font_path,
         text=first,
         final_size=first_size,
-        fontcolor="white",
+        fontcolor="0xF4F7FF",
         center_y=390,
         start_time=HOOK_WORD_1_START,
         end_time=HOOK_CARD_END,
@@ -886,7 +931,7 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
         safe_font_path=safe_font_path,
         text=second,
         final_size=second_size,
-        fontcolor="white",
+        fontcolor="0xF4F7FF",
         center_y=570,
         start_time=HOOK_WORD_2_START,
         end_time=HOOK_CARD_END,
@@ -901,7 +946,7 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
         safe_font_path=safe_font_path,
         text=third,
         final_size=third_size,
-        fontcolor="0xFFD36A",
+        fontcolor="0x00E5FF",
         center_y=765,
         start_time=HOOK_WORD_3_START,
         end_time=HOOK_CARD_END,
@@ -947,8 +992,10 @@ def build_truth_punch_filters(
     enable = f"between(t\\,{start_time:.2f}\\,{end_time:.2f})"
 
     filters = [
-        f"drawbox=x=70:y=455:w=580:h=230:color=black@0.62:t=fill:enable='{enable}'",
-        f"drawbox=x=70:y=455:w=580:h=230:color=0xDFAF37@0.24:t=5:enable='{enable}'",
+        f"drawbox=x=44:y=450:w=632:h=260:color=black@0.50:t=fill:enable='{enable}'",
+        f"drawbox=x=44:y=450:w=6:h=260:color=0x00E5FF@0.84:t=fill:enable='{enable}'",
+        f"drawbox=x=44:y=450:w=632:h=3:color=0x00E5FF@0.36:t=fill:enable='{enable}'",
+        f"drawbox=x=44:y=707:w=632:h=3:color=0x00E5FF@0.30:t=fill:enable='{enable}'",
     ]
 
     first_start = start_time + 0.08
@@ -962,11 +1009,11 @@ def build_truth_punch_filters(
             safe_font_path=safe_font_path,
             text=line,
             final_size=size,
-            fontcolor="0xE6C15A",
-            center_y=570,
+            fontcolor="0x00E5FF",
+            center_y=580,
             start_time=first_start,
             end_time=end_time,
-            borderw=6,
+            borderw=7,
             shadow=3,
             overshoot_scale=1.06,
             start_scale=0.84,
@@ -984,8 +1031,8 @@ def build_truth_punch_filters(
         safe_font_path=safe_font_path,
         text=first,
         final_size=first_size,
-        fontcolor="white",
-        center_y=525,
+        fontcolor="0xF4F7FF",
+        center_y=535,
         start_time=first_start,
         end_time=end_time,
         borderw=5,
@@ -1001,11 +1048,11 @@ def build_truth_punch_filters(
         safe_font_path=safe_font_path,
         text=second,
         final_size=second_size,
-        fontcolor="0xE6C15A",
-        center_y=620,
+        fontcolor="0x00E5FF",
+        center_y=635,
         start_time=second_start,
         end_time=end_time,
-        borderw=7,
+        borderw=8,
         shadow=3,
         overshoot_scale=1.06,
         start_scale=0.84,
@@ -1050,8 +1097,12 @@ def build_cta_card_filters(
     enable = f"between(t\\,{start_time:.2f}\\,{end_time:.2f})"
 
     filters = [
-        f"drawbox=x=30:y=365:w=660:h=430:color=black@0.68:t=fill:enable='{enable}'",
-        f"drawbox=x=30:y=365:w=660:h=430:color=0xDFAF37@0.26:t=6:enable='{enable}'",
+        # Aggressive lower HUD panel. It stays large enough to drive comments
+        # without covering the entire final scene.
+        f"drawbox=x=34:y=740:w=652:h=360:color=black@0.56:t=fill:enable='{enable}'",
+        f"drawbox=x=34:y=740:w=6:h=360:color=0x00E5FF@0.86:t=fill:enable='{enable}'",
+        f"drawbox=x=34:y=740:w=652:h=3:color=0x00E5FF@0.38:t=fill:enable='{enable}'",
+        f"drawbox=x=34:y=1097:w=652:h=3:color=0x00E5FF@0.32:t=fill:enable='{enable}'",
     ]
 
     label_start = start_time + 0.05
@@ -1061,10 +1112,10 @@ def build_cta_card_filters(
     add_pop_drawtext(
         filters=filters,
         safe_font_path=safe_font_path,
-        text=safe_label or "COMENTA",
-        final_size=82,
-        fontcolor="white",
-        center_y=450,
+        text=safe_label or "ELIGE",
+        final_size=86,
+        fontcolor="0xF4F7FF",
+        center_y=815,
         start_time=label_start,
         end_time=end_time,
         borderw=5,
@@ -1081,11 +1132,11 @@ def build_cta_card_filters(
             safe_font_path=safe_font_path,
             text=phrase_line,
             final_size=phrase_size,
-            fontcolor="0xE6C15A",
-            center_y=615,
+            fontcolor="0x00E5FF",
+            center_y=965,
             start_time=phrase_1_start,
             end_time=end_time,
-            borderw=7,
+            borderw=8,
             shadow=3,
             overshoot_scale=1.11,
             start_scale=0.78,
@@ -1101,11 +1152,11 @@ def build_cta_card_filters(
         safe_font_path=safe_font_path,
         text=first,
         final_size=first_size,
-        fontcolor="0xE6C15A",
-        center_y=585,
+        fontcolor="0x00E5FF",
+        center_y=930,
         start_time=phrase_1_start,
         end_time=end_time,
-        borderw=7,
+        borderw=8,
         shadow=3,
         overshoot_scale=1.10,
         start_scale=0.78,
@@ -1116,8 +1167,8 @@ def build_cta_card_filters(
         safe_font_path=safe_font_path,
         text=second,
         final_size=second_size,
-        fontcolor="0xFFD36A",
-        center_y=705,
+        fontcolor="0x00E5FF",
+        center_y=1020,
         start_time=phrase_2_start,
         end_time=end_time,
         borderw=8,
@@ -1137,7 +1188,7 @@ def validate_cta_for_render(call_to_action: str) -> None:
             status_code=400,
             detail={
                 "message": "call_to_action llegó vacío. No se puede renderizar sin CTA final.",
-                "expected_format": "CTA hablado breve, por ejemplo: Comenta “frase corta” si ...",
+                "expected_format": "CTA hablado breve tipo dilema, por ejemplo: ELIGE: RECORDAR / SOBREVIVIR",
             }
         )
 
@@ -1147,7 +1198,7 @@ def validate_cta_for_render(call_to_action: str) -> None:
             detail={
                 "message": "call_to_action es demasiado corto para detectar y renderizar una CTA final confiable.",
                 "call_to_action": text,
-                "expected_format": "CTA hablado breve con acción + razón.",
+                "expected_format": "CTA hablado breve con dilema o pregunta polarizante.",
             }
         )
 
@@ -1489,7 +1540,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,285,1
+Style: Default,Bebas Neue,76,&H00FFF7F4,&H00FFF7F4,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,285,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1605,9 +1656,9 @@ def health():
         "hook_word_1_start": HOOK_WORD_1_START,
         "hook_word_2_start": HOOK_WORD_2_START,
         "hook_word_3_start": HOOK_WORD_3_START,
-        "hook_card_mode": "forced_3_line_vertical_pop_impact",
-        "truth_punch_mode": "animated_mid_video_pop_input_with_fallback",
-        "cta_card_mode": "large_vertical_staggered_pop",
+        "hook_card_mode": "futuristic_hud_3_hit_impact",
+        "truth_punch_mode": "futuristic_hud_truth_punch",
+        "cta_card_mode": "futuristic_hud_polarizing_cta",
         "cta_detection_mode": "call_to_action_alignment_match_dynamic",
         "reference_start_time": REFERENCE_START_TIME,
         "cta_card_duration": CTA_CARD_DURATION,
@@ -1616,7 +1667,7 @@ def health():
         "cta_card_required": True,
         "voice_starts_at": "0.00s",
         "sfx_enabled": False,
-        "render_style": "clean_5_scene_cinematic_stable_crop_readable_truth_punch",
+        "render_style": "futuristic_megacity_hud_5_scene_cinematic",
     }
 
 
@@ -1814,7 +1865,7 @@ async def render_video(data: RenderRequest):
         start_time=REFERENCE_START_TIME
     )
 
-    hook_text = data.hook_visual_text or data.hook or "NO SIGAS IGUAL"
+    hook_text = data.hook_visual_text or data.hook or "NO ERA DINERO"
     cta_label, cta_phrase = extract_cta_visual_parts(data.call_to_action, hook=data.hook, guion=data.guion)
     cta_card_filters = build_cta_card_filters(
         data.call_to_action,
@@ -1956,7 +2007,7 @@ async def render_video(data: RenderRequest):
             bg_video_path = os.path.join(IMAGE_DIR, f"{job_id}_bg.mp4")
             build_background_from_images(image_paths, bg_video_path, final_duration, job_id)
 
-            overlay_filter = "colorchannelmixer=rr=0.68:gg=0.68:bb=0.68"
+            overlay_filter = "eq=contrast=1.04:saturation=1.10"
             video_filter = compose_video_filter(overlay_filter)
             render_mode = f"static_image_clean_{len(image_paths)}"
             media_count = len(image_paths)
@@ -2040,7 +2091,7 @@ async def render_video(data: RenderRequest):
 
     base_url = os.environ.get(
         "BASE_URL",
-        "https://ffmpeg-render-api-productionlbn.up.railway.app"
+        "https://ffmpeg-render-api-production-1143.up.railway.app"
     )
 
     return {
@@ -2071,9 +2122,9 @@ async def render_video(data: RenderRequest):
         "truth_punch_duration": TRUTH_PUNCH_DURATION,
         "truth_punch_start_time": truth_punch_window[0] if truth_punch_window else None,
         "truth_punch_end_time": truth_punch_window[1] if truth_punch_window else None,
-        "hook_card_mode": "forced_3_line_vertical_pop_impact",
-        "truth_punch_mode": "animated_mid_video_pop_input_with_fallback",
-        "cta_card_mode": "large_vertical_staggered_pop",
+        "hook_card_mode": "futuristic_hud_3_hit_impact",
+        "truth_punch_mode": "futuristic_hud_truth_punch",
+        "cta_card_mode": "futuristic_hud_polarizing_cta",
         "cta_detection_mode": "call_to_action_alignment_match_dynamic",
         "hook_word_1_start": HOOK_WORD_1_START,
         "hook_word_2_start": HOOK_WORD_2_START,
@@ -2082,5 +2133,5 @@ async def render_video(data: RenderRequest):
         "sfx_enabled": False,
         "music_required": True,
         "cta_card_required": True,
-        "render_style": "clean_5_scene_cinematic_stable_crop_readable_truth_punch",
+        "render_style": "futuristic_megacity_hud_5_scene_cinematic",
     }
