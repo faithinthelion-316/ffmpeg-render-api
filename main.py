@@ -238,37 +238,185 @@ def split_truth_punch_lines(text: str) -> list[str]:
     return [" ".join(words[:2]), " ".join(words[2:])]
 
 
+
 def split_cta_phrase_lines(text: str) -> list[str]:
-    words = clean_display_text(text, max_words=4).split()
+    """
+    Backward-compatible wrapper for legacy callers.
 
-    if not words:
-        return ["SÍ", "NO"]
-
-    if len(words) <= 2:
-        return [" ".join(words)]
-
-    if len(words) == 3:
-        return [words[0], " ".join(words[1:])]
-
-    return [" ".join(words[:2]), " ".join(words[2:])]
+    CTA text is no longer restricted to 3-4 words. Hook cards and truth
+    punch overlays stay compact, but the final CTA card is allowed to carry
+    a full polarizing question or dilemma.
+    """
+    return split_cta_visual_text_into_lines(text, max_lines=3, max_chars=18)
 
 
 def adjust_font_size_for_text(text: str, base_size: int, min_size: int = 72) -> int:
-    plain = str(text or "").replace("\\,", ",")
+    plain = str(text or "")
+    plain = plain.replace("\\,", ",")
+    plain = plain.replace("\\:", ":")
+    plain = re.sub(r"\s+", " ", plain).strip()
     char_count = len(plain)
 
     if char_count <= 8:
         scale = 1.00
-    elif char_count <= 10:
+    elif char_count <= 11:
         scale = 0.92
-    elif char_count <= 12:
+    elif char_count <= 14:
         scale = 0.82
-    elif char_count <= 15:
-        scale = 0.72
+    elif char_count <= 18:
+        scale = 0.70
+    elif char_count <= 22:
+        scale = 0.60
     else:
-        scale = 0.62
+        scale = 0.52
 
     return max(min_size, int(round(base_size * scale)))
+
+
+def clean_cta_display_text(value: str, max_chars: int = 76) -> str:
+    """
+    Cleans CTA text for the final comment card.
+
+    Unlike clean_display_text(), this function does NOT cap by word count.
+    It preserves useful CTA punctuation such as ':', '/', and '?'.
+    """
+    text = str(value or "").strip()
+    text = text.replace("“", "").replace("”", "").replace('"', "")
+    text = text.replace("¿", "").replace("¡", "")
+    text = text.replace("—", "-").replace("–", "-")
+    text = re.sub(r"\s+", " ", text)
+    text = text.upper().strip()
+
+    # Normalize common Spanish CTA verbs to English only for visual rendering.
+    replacements = {
+        r"^ELIGE\b": "CHOOSE",
+        r"^DECIDE\b": "CHOOSE",
+        r"^VOTA\b": "VOTE",
+        r"^COMENTA\b": "COMMENT",
+        r"^LO HARIAS\?": "WOULD YOU DO IT?",
+        r"^LO HARÍAS\?": "WOULD YOU DO IT?",
+    }
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    text = re.sub(r"\s*/\s*", " / ", text)
+    text = re.sub(r"\s*:\s*", ": ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip(" -:/")
+
+    return text
+
+
+def wrap_words_balanced(text: str, max_lines: int = 2, max_chars: int = 18) -> list[str]:
+    text = clean_cta_display_text(text, max_chars=76)
+    words = text.split()
+
+    if not words:
+        return []
+
+    if len(text) <= max_chars:
+        return [text]
+
+    lines: list[str] = []
+    current: list[str] = []
+
+    for word in words:
+        candidate = " ".join(current + [word]).strip()
+        if current and len(candidate) > max_chars and len(lines) < max_lines - 1:
+            lines.append(" ".join(current))
+            current = [word]
+        else:
+            current.append(word)
+
+    if current:
+        lines.append(" ".join(current))
+
+    if len(lines) > max_lines:
+        overflow = " ".join(lines[max_lines - 1:])
+        lines = lines[:max_lines - 1] + [overflow]
+
+    return [x.strip() for x in lines if x.strip()]
+
+
+def normalize_cta_label(label: str) -> str:
+    label = clean_cta_display_text(label, max_chars=32)
+    label = label.rstrip(":").strip()
+
+    translations = {
+        "ELIGE": "CHOOSE",
+        "DECIDE": "CHOOSE",
+        "VOTA": "VOTE",
+        "COMENTA": "COMMENT",
+    }
+    return translations.get(label, label)
+
+
+def split_cta_visual_text_into_lines(text: str, max_lines: int = 4, max_chars: int = 18) -> list[str]:
+    """
+    Converts a long CTA into 2-4 short visual lines that fit inside the final HUD.
+
+    Examples:
+    - CHOOSE: ONE MORE MINUTE / CLEAN GOODBYE
+      -> CHOOSE / ONE MORE MINUTE / CLEAN GOODBYE
+    - WOULD YOU PAY WITH TEARS? YES / NO
+      -> WOULD YOU PAY / WITH TEARS? / YES / NO
+    - WHAT WOULD YOU CHOOSE: SPOUSE OR CHILD?
+      -> WHAT WOULD YOU / CHOOSE? / SPOUSE OR CHILD?
+    """
+    full = clean_cta_display_text(text, max_chars=76)
+
+    if not full:
+        return ["YES / NO"]
+
+    # Format: LABEL: OPTION A / OPTION B
+    if ":" in full:
+        raw_label, raw_body = full.split(":", 1)
+        label = normalize_cta_label(raw_label)
+        body = clean_cta_display_text(raw_body, max_chars=58)
+
+        if label.startswith("WHAT WOULD YOU CHOOSE"):
+            label_lines = ["WHAT WOULD YOU", "CHOOSE?"]
+        elif label.startswith("WHO IS RIGHT"):
+            label_lines = ["WHO IS RIGHT?"]
+        elif label.startswith("WHO WAS RIGHT"):
+            label_lines = ["WHO WAS RIGHT?"]
+        elif label.startswith("WHO OWNS"):
+            label_lines = wrap_words_balanced(label + "?", max_lines=2, max_chars=max_chars)
+        else:
+            label_lines = wrap_words_balanced(label, max_lines=2, max_chars=max_chars)
+
+        body = body.rstrip("?").strip() if label.startswith("WHAT WOULD YOU CHOOSE") else body
+
+        if "/" in body:
+            options = [clean_cta_display_text(x, max_chars=26).rstrip("?").strip() for x in body.split("/")]
+            options = [x for x in options if x]
+            lines = label_lines + options[:2]
+        else:
+            lines = label_lines + wrap_words_balanced(body, max_lines=max_lines - len(label_lines), max_chars=max_chars)
+
+        return lines[:max_lines]
+
+    # Format: QUESTION? YES / NO
+    if "YES / NO" in full:
+        question = full.replace("YES / NO", "").strip()
+        question = question if question.endswith("?") else question.rstrip(" ?") + "?"
+        question_lines = wrap_words_balanced(question, max_lines=max_lines - 1, max_chars=max_chars)
+        return (question_lines + ["YES / NO"])[:max_lines]
+
+    # Format: SHORT QUESTION
+    if "?" in full:
+        return wrap_words_balanced(full, max_lines=max_lines, max_chars=max_chars)
+
+    # Format: OPTION A / OPTION B
+    if "/" in full:
+        options = [clean_cta_display_text(x, max_chars=26).strip() for x in full.split("/")]
+        options = [x for x in options if x]
+        return options[:max_lines]
+
+    return wrap_words_balanced(full, max_lines=max_lines, max_chars=max_chars)
+
 
 
 def extract_quoted_cta(call_to_action: str, hook: str = "", guion: str = "") -> str:
@@ -277,86 +425,89 @@ def extract_quoted_cta(call_to_action: str, hook: str = "", guion: str = "") -> 
 
     match = re.search(r"[“\"]([^”\"]{2,80})[”\"]", text)
     if match:
-        phrase = clean_display_text(match.group(1), max_words=4)
+        phrase = clean_cta_display_text(match.group(1), max_chars=48)
         if phrase:
             return phrase
 
-    if "memoria" in context or "recuerdo" in context:
-        return "RECORDAR / SOBREVIVIR"
+    if "memory" in context or "memoria" in context or "recuerdo" in context:
+        return "MEMORY / SURVIVAL"
 
-    if "renta" in context or "alquiler" in context or "casa" in context:
-        return "MEMORIA / CASA"
+    if "rent" in context or "renta" in context or "house" in context or "home" in context:
+        return "MEMORY / HOME"
 
-    if "amor" in context or "pareja" in context:
-        return "AMOR / SISTEMA"
+    if "love" in context or "amor" in context:
+        return "LOVE / SAFETY"
 
-    if "cuerpo" in context or "rostro" in context or "identidad" in context:
-        return "CUERPO / IDENTIDAD"
+    if "body" in context or "cuerpo" in context or "face" in context or "identity" in context:
+        return "BODY / IDENTITY"
 
-    if "humano" in context or "real" in context:
-        return "HUMANO / SISTEMA"
+    if "child" in context or "son" in context or "daughter" in context or "famil" in context:
+        return "FAMILY / LAW"
 
-    return "SÍ / NO"
+    if "sky" in context or "air" in context:
+        return "AIR / SKY"
 
+    return "YES / NO"
 
 
 def extract_cta_visual_parts(call_to_action: str, hook: str = "", guion: str = "") -> tuple[str, str]:
     """
-    Returns a dynamic polarizing CTA label and visual phrase.
+    Returns a readable CTA label and phrase for logs/backward compatibility.
 
-    Preferred formats for this channel:
-    - ELIGE: RECORDAR / SOBREVIVIR
-    - ¿LO HARÍAS? SÍ / NO
-    - COMENTA: MEMORIA / CASA
+    The renderer itself uses build_cta_visual_lines() so long CTAs can fit in
+    multiple lines. This function no longer truncates the CTA to 3-4 words.
     """
-    text = str(call_to_action or "").strip()
+    text = clean_cta_display_text(call_to_action, max_chars=76)
 
     if not text:
-        return "ELIGE", extract_quoted_cta(call_to_action, hook=hook, guion=guion)
+        return "CHOOSE", extract_quoted_cta(call_to_action, hook=hook, guion=guion)
 
-    quoted = re.search(r"[“\"]([^”\"]{2,80})[”\"]", text)
-    if quoted:
-        phrase = clean_display_text(quoted.group(1), max_words=4)
-        if phrase:
-            first_word_match = re.search(r"\S+", text)
-            label = "COMENTA"
-            if first_word_match:
-                label_candidate = clean_display_text(first_word_match.group(0), max_words=1).replace(":", "")
-                if label_candidate:
-                    label = label_candidate
-            return label, phrase
+    if ":" in text:
+        label, body = text.split(":", 1)
+        label = normalize_cta_label(label) or "CHOOSE"
+        body = clean_cta_display_text(body, max_chars=58)
+        if body:
+            return label, body
 
-    # Dilemma format: "ELIGE: A / B" or "DECIDE: A / B"
-    dilemma_match = re.search(
-        r"\b(ELIGE|DECIDE|VOTA|COMENTA)\b\s*:?\s*(.{2,80})",
-        text,
-        flags=re.IGNORECASE
-    )
-    if dilemma_match:
-        label = clean_display_text(dilemma_match.group(1), max_words=1).replace(":", "")
-        phrase = clean_display_text(dilemma_match.group(2), max_words=4)
-        if phrase:
-            return label, phrase
+    if "YES / NO" in text:
+        question = text.replace("YES / NO", "").strip()
+        question = question if question else "WOULD YOU DO IT?"
+        return question, "YES / NO"
 
-    # Question format: "¿Venderías tu memoria...?"
-    if "?" in text or "¿" in text:
-        return "¿LO HARÍAS?", "SÍ / NO"
+    if "/" in text:
+        return "CHOOSE", text
 
-    first_word_match = re.search(r"\S+", text)
-    label = "ELIGE"
-    if first_word_match:
-        label_candidate = clean_display_text(first_word_match.group(0), max_words=1).replace(":", "")
-        if label_candidate:
-            label = label_candidate
+    if "?" in text:
+        return text, ""
 
-    remainder = re.sub(r"^\S+", "", text).strip()
-    remainder = re.split(r"\bsi\b|\bpara\b", remainder, flags=re.IGNORECASE)[0].strip() or remainder
-    phrase = clean_display_text(remainder, max_words=4)
+    return "COMMENT", text
 
-    if not phrase:
-        phrase = extract_quoted_cta(call_to_action, hook=hook, guion=guion)
 
-    return label, phrase
+def build_cta_visual_lines(call_to_action: str, hook: str = "", guion: str = "") -> list[str]:
+    text = clean_cta_display_text(call_to_action, max_chars=76)
+
+    if not text:
+        text = extract_quoted_cta(call_to_action, hook=hook, guion=guion)
+
+    lines = split_cta_visual_text_into_lines(text, max_lines=4, max_chars=18)
+
+    if not lines:
+        lines = split_cta_visual_text_into_lines(
+            extract_quoted_cta(call_to_action, hook=hook, guion=guion),
+            max_lines=4,
+            max_chars=18,
+        )
+
+    # Final safety: avoid a single very long line. This is rare but prevents
+    # drawtext overflow on platform-specific CTAs.
+    safe_lines: list[str] = []
+    for line in lines:
+        if len(line) > 22:
+            safe_lines.extend(wrap_words_balanced(line, max_lines=2, max_chars=18))
+        else:
+            safe_lines.append(line)
+
+    return safe_lines[:4]
 
 
 def extract_truth_punch_text(guion: str) -> str:
@@ -1063,6 +1214,7 @@ def build_truth_punch_filters(
     return filters
 
 
+
 def build_cta_card_filters(
     call_to_action: str,
     hook: str,
@@ -1078,15 +1230,13 @@ def build_cta_card_filters(
 
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
 
-    cta_label, phrase = extract_cta_visual_parts(call_to_action, hook=hook, guion=guion)
-    safe_label = escape_drawtext_value(cta_label)
-    phrase_lines = split_cta_phrase_lines(phrase)
-    safe_phrase_lines = [escape_drawtext_value(x) for x in phrase_lines if x and x.strip()]
+    visual_lines = build_cta_visual_lines(call_to_action, hook=hook, guion=guion)
+    safe_lines = [escape_drawtext_value(x) for x in visual_lines if x and x.strip()]
 
-    if not safe_phrase_lines:
+    if not safe_lines:
         return []
 
-    safe_phrase_lines = safe_phrase_lines[:2]
+    safe_lines = safe_lines[:4]
 
     start_time = cta_start_time
     end_time = final_duration - 0.05
@@ -1096,86 +1246,76 @@ def build_cta_card_filters(
 
     enable = f"between(t\\,{start_time:.2f}\\,{end_time:.2f})"
 
+    line_count = len(safe_lines)
+
+    # CTA long-card mode. Larger panel and dynamic typography allow questions
+    # and two-option dilemmas to fit without weakening the CTA to 3-4 words.
+    panel_x = 30
+    panel_y = 685
+    panel_w = 660
+    panel_h = 470
+    panel_bottom = panel_y + panel_h
+
     filters = [
-        # Aggressive lower HUD panel. It stays large enough to drive comments
-        # without covering the entire final scene.
-        f"drawbox=x=34:y=740:w=652:h=360:color=black@0.56:t=fill:enable='{enable}'",
-        f"drawbox=x=34:y=740:w=6:h=360:color=0x00E5FF@0.86:t=fill:enable='{enable}'",
-        f"drawbox=x=34:y=740:w=652:h=3:color=0x00E5FF@0.38:t=fill:enable='{enable}'",
-        f"drawbox=x=34:y=1097:w=652:h=3:color=0x00E5FF@0.32:t=fill:enable='{enable}'",
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.16:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.60:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w=6:h={panel_h}:color=0x00E5FF@0.88:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=3:color=0x00E5FF@0.40:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_bottom - 3}:w={panel_w}:h=3:color=0x00E5FF@0.34:t=fill:enable='{enable}'",
     ]
 
-    label_start = start_time + 0.05
-    phrase_1_start = start_time + 0.28
-    phrase_2_start = start_time + 0.52
+    if line_count == 1:
+        centers = [930]
+        base_sizes = [126]
+        min_sizes = [70]
+        colors = ["0x00E5FF"]
+    elif line_count == 2:
+        centers = [845, 985]
+        base_sizes = [82, 112]
+        min_sizes = [58, 66]
+        colors = ["0xF4F7FF", "0x00E5FF"]
+    elif line_count == 3:
+        centers = [785, 910, 1030]
+        base_sizes = [68, 96, 96]
+        min_sizes = [50, 58, 58]
+        colors = ["0xF4F7FF", "0x00E5FF", "0x00E5FF"]
+    else:
+        centers = [748, 850, 952, 1054]
+        base_sizes = [58, 78, 78, 78]
+        min_sizes = [46, 50, 50, 50]
+        colors = ["0xF4F7FF", "0x00E5FF", "0x00E5FF", "0x00E5FF"]
 
-    add_pop_drawtext(
-        filters=filters,
-        safe_font_path=safe_font_path,
-        text=safe_label or "ELIGE",
-        final_size=86,
-        fontcolor="0xF4F7FF",
-        center_y=815,
-        start_time=label_start,
-        end_time=end_time,
-        borderw=5,
-        shadow=2,
-        overshoot_scale=1.07,
-        start_scale=0.82,
-    )
+    for index, line in enumerate(safe_lines):
+        line_start = start_time + 0.06 + (index * 0.18)
+        line_size = adjust_font_size_for_text(
+            line,
+            base_size=base_sizes[index],
+            min_size=min_sizes[index],
+        )
 
-    if len(safe_phrase_lines) == 1:
-        phrase_line = safe_phrase_lines[0]
-        phrase_size = adjust_font_size_for_text(phrase_line, 138, min_size=88)
+        # Keep the first line slightly calmer when it is a label/question,
+        # and make the final decision/options visually dominant.
+        borderw = 5 if index == 0 else 7
+        shadow = 2 if index == 0 else 3
+        overshoot = 1.05 if index == 0 else 1.09
+        start_scale = 0.84 if index == 0 else 0.78
+
         add_pop_drawtext(
             filters=filters,
             safe_font_path=safe_font_path,
-            text=phrase_line,
-            final_size=phrase_size,
-            fontcolor="0x00E5FF",
-            center_y=965,
-            start_time=phrase_1_start,
+            text=line,
+            final_size=line_size,
+            fontcolor=colors[index],
+            center_y=centers[index],
+            start_time=line_start,
             end_time=end_time,
-            borderw=8,
-            shadow=3,
-            overshoot_scale=1.11,
-            start_scale=0.78,
+            borderw=borderw,
+            shadow=shadow,
+            overshoot_scale=overshoot,
+            start_scale=start_scale,
+            phase1_duration=0.10,
+            phase2_duration=0.24,
         )
-        return filters
-
-    first, second = safe_phrase_lines[0], safe_phrase_lines[1]
-    first_size = adjust_font_size_for_text(first, 126, min_size=84)
-    second_size = adjust_font_size_for_text(second, 138, min_size=88)
-
-    add_pop_drawtext(
-        filters=filters,
-        safe_font_path=safe_font_path,
-        text=first,
-        final_size=first_size,
-        fontcolor="0x00E5FF",
-        center_y=930,
-        start_time=phrase_1_start,
-        end_time=end_time,
-        borderw=8,
-        shadow=3,
-        overshoot_scale=1.10,
-        start_scale=0.78,
-    )
-
-    add_pop_drawtext(
-        filters=filters,
-        safe_font_path=safe_font_path,
-        text=second,
-        final_size=second_size,
-        fontcolor="0x00E5FF",
-        center_y=1020,
-        start_time=phrase_2_start,
-        end_time=end_time,
-        borderw=8,
-        shadow=4,
-        overshoot_scale=1.12,
-        start_scale=0.76,
-    )
 
     return filters
 
@@ -1658,8 +1798,8 @@ def health():
         "hook_word_3_start": HOOK_WORD_3_START,
         "hook_card_mode": "futuristic_hud_3_hit_impact",
         "truth_punch_mode": "futuristic_hud_truth_punch",
-        "cta_card_mode": "futuristic_hud_polarizing_cta",
-        "cta_detection_mode": "call_to_action_alignment_match_dynamic",
+        "cta_card_mode": "futuristic_hud_long_polarizing_cta",
+        "cta_detection_mode": "call_to_action_alignment_match_dynamic_long_cta",
         "reference_start_time": REFERENCE_START_TIME,
         "cta_card_duration": CTA_CARD_DURATION,
         "truth_punch_duration": TRUTH_PUNCH_DURATION,
@@ -2124,8 +2264,8 @@ async def render_video(data: RenderRequest):
         "truth_punch_end_time": truth_punch_window[1] if truth_punch_window else None,
         "hook_card_mode": "futuristic_hud_3_hit_impact",
         "truth_punch_mode": "futuristic_hud_truth_punch",
-        "cta_card_mode": "futuristic_hud_polarizing_cta",
-        "cta_detection_mode": "call_to_action_alignment_match_dynamic",
+        "cta_card_mode": "futuristic_hud_long_polarizing_cta",
+        "cta_detection_mode": "call_to_action_alignment_match_dynamic_long_cta",
         "hook_word_1_start": HOOK_WORD_1_START,
         "hook_word_2_start": HOOK_WORD_2_START,
         "hook_word_3_start": HOOK_WORD_3_START,
