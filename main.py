@@ -173,10 +173,12 @@ def escape_drawtext_value(value: str) -> str:
         .replace("\\", "\\\\")
         .replace(":", "\\:")
         .replace(",", "\\,")
-        .replace("'", "\\'")
+        .replace("'", "’")
         .replace("%", "\\%")
         .replace("[", "\\[")
         .replace("]", "\\]")
+        .replace("=", "\\=")
+        .replace(";", "\\;")
         .replace("\n", " ")
         .replace("\r", " ")
     )
@@ -1043,14 +1045,14 @@ def build_reference_filter(referencia_biblica: str, start_time: float = REFERENC
         f"drawbox="
         f"x=50:y=h-188:w=620:h=48:"
         f"color=black@0.26:t=fill:"
-        f"enable='gte(t\\,{start_time:.2f})',"
+        f"enable=gte(t\\,{start_time:.2f}),"
         f"drawbox="
         f"x=50:y=h-188:w=4:h=48:"
         f"color=0x4BB8C8@0.68:t=fill:"
-        f"enable='gte(t\\,{start_time:.2f})',"
+        f"enable=gte(t\\,{start_time:.2f}),"
         f"drawtext="
-        f"fontfile='{safe_font_path}':"
-        f"text='{safe_text}':"
+        f"fontfile={safe_font_path}:"
+        f"text={safe_text}:"
         f"fontsize=24:"
         f"fontcolor=0xB8C7D9:"
         f"borderw=1:"
@@ -1059,7 +1061,7 @@ def build_reference_filter(referencia_biblica: str, start_time: float = REFERENC
         f"shadowy=1:"
         f"x=64:"
         f"y=h-176:"
-        f"enable='gte(t\\,{start_time:.2f})'"
+        f"enable=gte(t\\,{start_time:.2f})"
     )
 
 
@@ -1099,8 +1101,8 @@ def add_pop_drawtext(
 
         filters.append(
             f"drawtext="
-            f"fontfile='{safe_font_path}':"
-            f"text='{text}':"
+            f"fontfile={safe_font_path}:"
+            f"text={text}:"
             f"fontsize={size}:"
             f"fontcolor={fontcolor}:"
             f"borderw={borderw}:"
@@ -1109,7 +1111,7 @@ def add_pop_drawtext(
             f"shadowy={shadow}:"
             f"x=(w-text_w)/2:"
             f"y={center_y}-text_h/2:"
-            f"enable='{enable}'"
+            f"enable={enable}"
         )
 
 
@@ -1137,12 +1139,12 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
     panel_bottom = panel_y + panel_h
 
     filters = [
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.30:t=fill:enable='{enable_flash}'",
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.18:t=fill:enable='{enable_card}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.44:t=fill:enable='{enable_card}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.78:t=fill:enable='{enable_card}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.32:t=fill:enable='{enable_card}'",
-        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.26:t=fill:enable='{enable_card}'",
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.30:t=fill:enable={enable_flash}",
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.18:t=fill:enable={enable_card}",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.44:t=fill:enable={enable_card}",
+        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.78:t=fill:enable={enable_card}",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.32:t=fill:enable={enable_card}",
+        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.26:t=fill:enable={enable_card}",
     ]
 
     first_size = adjust_hud_font_size_for_width(first, 80, min_size=54, max_width=560)
@@ -1236,10 +1238,10 @@ def build_truth_punch_filters(
     panel_bottom = panel_y + panel_h
 
     filters = [
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.46:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.78:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.30:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.25:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.46:t=fill:enable={enable}",
+        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.78:t=fill:enable={enable}",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.30:t=fill:enable={enable}",
+        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.25:t=fill:enable={enable}",
     ]
 
     first_start = start_time + 0.08
@@ -1351,11 +1353,11 @@ def build_cta_card_filters(
     panel_bottom = panel_y + panel_h
 
     filters = [
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.14:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.58:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.82:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.34:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.28:t=fill:enable='{enable}'",
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.14:t=fill:enable={enable}",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.58:t=fill:enable={enable}",
+        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.82:t=fill:enable={enable}",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.34:t=fill:enable={enable}",
+        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.28:t=fill:enable={enable}",
     ]
 
     if line_count == 1:
@@ -1874,6 +1876,37 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}\n")
 
 
+
+def validate_video_filter_for_ffmpeg(filter_value: str) -> None:
+    """
+    Guardrail against FFmpeg drawtext parser failures.
+
+    This renderer passes filtergraphs directly to subprocess, not through a shell.
+    Therefore drawtext option values are emitted unquoted and fully escaped.
+    The validator blocks known failure patterns before spending render time.
+    """
+    value = str(filter_value or "")
+
+    bad_patterns = [
+        "enable='between(",
+        "enable='gte(",
+        ":text='",
+        ":fontfile='",
+        "between(t,",
+        "gte(t,",
+    ]
+
+    for pattern in bad_patterns:
+        if pattern in value:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Unsafe FFmpeg filtergraph detected before render.",
+                    "pattern": pattern,
+                    "filter_excerpt": value[max(0, value.find(pattern) - 120): value.find(pattern) + 240],
+                }
+            )
+
 @app.get("/")
 def health():
     return {
@@ -2147,7 +2180,7 @@ async def render_video(data: RenderRequest):
         if reference_filter:
             parts.append(reference_filter)
 
-        parts.append(f"subtitles='{safe_subtitles_path}':fontsdir='{safe_fonts_dir}'")
+        parts.append(f"subtitles={safe_subtitles_path}:fontsdir={safe_fonts_dir}")
 
         parts.extend(build_hook_card_filters(hook_text))
         parts.extend(
@@ -2302,6 +2335,8 @@ async def render_video(data: RenderRequest):
             video_path
         ]
 
+    validate_video_filter_for_ffmpeg(video_filter)
+
     result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
@@ -2313,6 +2348,7 @@ async def render_video(data: RenderRequest):
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "render_mode": render_mode,
+                "video_filter_excerpt": video_filter[:2500],
             }
         )
 
