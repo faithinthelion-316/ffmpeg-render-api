@@ -57,11 +57,34 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 os.makedirs(CLIPS_DIR, exist_ok=True)
 
 APP_FONTS_DIR = "/app/fonts"
+
+# Space Grotesk remains the clean UI/metadata/subtitle font.
 APP_FONT_FILE = os.path.join(APP_FONTS_DIR, "SpaceGrotesk.ttf")
 RUNTIME_FONT_FILE = os.path.join(FONTS_DIR, "SpaceGrotesk.ttf")
 
+# Archivo Black is used only for large impact HUD text: hook, truth punch, CTA.
+# If it is not present in the repository, the renderer safely falls back to Space Grotesk.
+APP_HUD_FONT_CANDIDATES = [
+    os.path.join(APP_FONTS_DIR, "ArchivoBlack-Regular.ttf"),
+    os.path.join(APP_FONTS_DIR, "ArchivoBlack.ttf"),
+]
+RUNTIME_HUD_FONT_FILE = os.path.join(FONTS_DIR, "ArchivoBlack-Regular.ttf")
+
 if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
     shutil.copy(APP_FONT_FILE, RUNTIME_FONT_FILE)
+
+if not os.path.exists(RUNTIME_HUD_FONT_FILE):
+    for candidate in APP_HUD_FONT_CANDIDATES:
+        if os.path.exists(candidate):
+            shutil.copy(candidate, RUNTIME_HUD_FONT_FILE)
+            break
+
+
+def get_hud_font_file() -> str:
+    """Returns the impact font for hook/punch/CTA, with a safe fallback."""
+    if os.path.exists(RUNTIME_HUD_FONT_FILE):
+        return RUNTIME_HUD_FONT_FILE
+    return RUNTIME_FONT_FILE
 
 app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
@@ -272,6 +295,66 @@ def adjust_font_size_for_text(text: str, base_size: int, min_size: int = 72) -> 
 
     return max(min_size, int(round(base_size * scale)))
 
+
+
+
+def adjust_hud_font_size_for_width(
+    text: str,
+    base_size: int,
+    min_size: int = 44,
+    max_width: int = 600,
+    char_width_ratio: float = 0.68,
+) -> int:
+    """
+    Conservative font scaler for Archivo Black impact text.
+
+    FFmpeg drawtext does not auto-wrap. This prevents hook/punch/CTA lines
+    from touching or crossing the 720px vertical safe-area margins.
+    """
+    plain = str(text or "")
+    plain = plain.replace("\\,", ",").replace("\\:", ":")
+    plain = re.sub(r"\s+", " ", plain).strip()
+    char_count = max(1, len(plain))
+
+    size_by_content = adjust_font_size_for_text(plain, base_size, min_size=min_size)
+    size_by_width = int(max_width / (char_count * char_width_ratio))
+    return max(min_size, min(size_by_content, size_by_width, base_size))
+
+
+def format_reference_stamp(value: str) -> str:
+    """
+    Converts long world metadata into a short, safe stamp.
+
+    Example:
+    NOVA LOS ANGELES · 2184 | LOVE CONTRACT DISTRICT
+    -> NOVA LOS ANGELES · 2184
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    text = text.replace("—", "·").replace("–", "·")
+    text = re.sub(r"\s+", " ", text)
+    text = text.split("|")[0].strip()
+
+    year_match = re.search(r"\b(20\d{2}|21\d{2}|22\d{2}|23\d{2})\b", text)
+    if year_match:
+        year = year_match.group(1)
+        location = text[:year_match.start()].strip(" ·-:,/")
+        location = re.sub(r"\bYEAR\b", "", location, flags=re.IGNORECASE).strip(" ·-:,/")
+        if location:
+            text = f"{location} · {year}"
+        else:
+            text = year
+
+    text = text.upper()
+    text = re.sub(r"\s*[·\-:]\s*", " · ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if len(text) > 34:
+        text = text[:34].rstrip(" ·-:,/")
+
+    return text
 
 def clean_cta_display_text(value: str, max_chars: int = 76) -> str:
     """
@@ -939,7 +1022,7 @@ def build_background_from_images(
 def build_reference_filter(referencia_biblica: str, start_time: float = REFERENCE_START_TIME) -> str:
     """
     Keeps the existing request field name for Make compatibility, but renders it
-    as a futuristic location/time stamp for this channel.
+    as a short cinematic location/year stamp for this channel.
     """
     if not referencia_biblica or not referencia_biblica.strip():
         return ""
@@ -948,33 +1031,34 @@ def build_reference_filter(referencia_biblica: str, start_time: float = REFERENC
         return ""
 
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
-    safe_text = escape_drawtext_value(referencia_biblica.strip())
+    display_text = format_reference_stamp(referencia_biblica)
+    safe_text = escape_drawtext_value(display_text)
 
     if not safe_text:
         return ""
 
-    # Bottom-left HUD metadata stamp. It is intentionally lower hierarchy than
-    # active captions: cold gray text + muted teal accent.
+    # Compact lower metadata stamp. It stays inside the mobile safe area and
+    # avoids long case labels that previously ran outside the frame.
     return (
         f"drawbox="
-        f"x=34:y=h*0.805:w=652:h=74:"
-        f"color=black@0.34:t=fill:"
+        f"x=50:y=h-188:w=620:h=48:"
+        f"color=black@0.26:t=fill:"
         f"enable='gte(t\\,{start_time:.2f})',"
         f"drawbox="
-        f"x=34:y=h*0.805:w=5:h=74:"
-        f"color=0x4BB8C8@0.72:t=fill:"
+        f"x=50:y=h-188:w=4:h=48:"
+        f"color=0x4BB8C8@0.68:t=fill:"
         f"enable='gte(t\\,{start_time:.2f})',"
         f"drawtext="
         f"fontfile='{safe_font_path}':"
         f"text='{safe_text}':"
-        f"fontsize=32:"
+        f"fontsize=24:"
         f"fontcolor=0xB8C7D9:"
-        f"borderw=2:"
+        f"borderw=1:"
         f"bordercolor=black:"
-        f"shadowx=2:"
-        f"shadowy=2:"
-        f"x=52:"
-        f"y=h*0.822:"
+        f"shadowx=1:"
+        f"shadowy=1:"
+        f"x=64:"
+        f"y=h-176:"
         f"enable='gte(t\\,{start_time:.2f})'"
     )
 
@@ -1033,7 +1117,7 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
     if not os.path.exists(RUNTIME_FONT_FILE):
         return []
 
-    safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
+    safe_font_path = escape_ffmpeg_path(get_hud_font_file())
 
     lines = build_hook_impact_lines(hook_visual_text)
     safe_lines = [escape_drawtext_value(x) for x in lines if x and x.strip()]
@@ -1046,21 +1130,24 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
     enable_flash = f"between(t\\,0.00\\,{HOOK_CARD_START:.2f})"
     enable_card = f"between(t\\,{HOOK_CARD_START:.2f}\\,{HOOK_CARD_END:.2f})"
 
+    panel_x = 48
+    panel_y = 260
+    panel_w = 624
+    panel_h = 610
+    panel_bottom = panel_y + panel_h
+
     filters = [
-        # Short system-flash, much lighter than the original LBN blackout.
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.34:t=fill:enable='{enable_flash}'",
-        # Global dim keeps text legible without killing the first visual frame.
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.22:t=fill:enable='{enable_card}'",
-        # Large futuristic HUD impact panel.
-        f"drawbox=x=28:y=220:w=664:h=750:color=black@0.48:t=fill:enable='{enable_card}'",
-        f"drawbox=x=28:y=220:w=6:h=750:color=0x00E5FF@0.82:t=fill:enable='{enable_card}'",
-        f"drawbox=x=28:y=220:w=664:h=3:color=0x00E5FF@0.36:t=fill:enable='{enable_card}'",
-        f"drawbox=x=28:y=967:w=664:h=3:color=0x00E5FF@0.30:t=fill:enable='{enable_card}'",
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.30:t=fill:enable='{enable_flash}'",
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.18:t=fill:enable='{enable_card}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.44:t=fill:enable='{enable_card}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.78:t=fill:enable='{enable_card}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.32:t=fill:enable='{enable_card}'",
+        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.26:t=fill:enable='{enable_card}'",
     ]
 
-    first_size = adjust_font_size_for_text(first, 112, min_size=82)
-    second_size = adjust_font_size_for_text(second, 158, min_size=96)
-    third_size = adjust_font_size_for_text(third, 200, min_size=124)
+    first_size = adjust_hud_font_size_for_width(first, 80, min_size=54, max_width=560)
+    second_size = adjust_hud_font_size_for_width(second, 112, min_size=62, max_width=580)
+    third_size = adjust_hud_font_size_for_width(third, 138, min_size=74, max_width=590)
 
     add_pop_drawtext(
         filters=filters,
@@ -1068,13 +1155,13 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
         text=first,
         final_size=first_size,
         fontcolor="0xF4F7FF",
-        center_y=390,
+        center_y=410,
         start_time=HOOK_WORD_1_START,
         end_time=HOOK_CARD_END,
-        borderw=5,
+        borderw=4,
         shadow=2,
-        overshoot_scale=1.06,
-        start_scale=0.82,
+        overshoot_scale=1.04,
+        start_scale=0.84,
     )
 
     add_pop_drawtext(
@@ -1083,13 +1170,13 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
         text=second,
         final_size=second_size,
         fontcolor="0xF4F7FF",
-        center_y=570,
+        center_y=560,
         start_time=HOOK_WORD_2_START,
         end_time=HOOK_CARD_END,
-        borderw=7,
-        shadow=3,
-        overshoot_scale=1.08,
-        start_scale=0.80,
+        borderw=5,
+        shadow=2,
+        overshoot_scale=1.05,
+        start_scale=0.82,
     )
 
     add_pop_drawtext(
@@ -1098,13 +1185,13 @@ def build_hook_card_filters(hook_visual_text: str) -> list:
         text=third,
         final_size=third_size,
         fontcolor="0x00E5FF",
-        center_y=765,
+        center_y=715,
         start_time=HOOK_WORD_3_START,
         end_time=HOOK_CARD_END,
-        borderw=9,
-        shadow=4,
-        overshoot_scale=1.12,
-        start_scale=0.78,
+        borderw=6,
+        shadow=3,
+        overshoot_scale=1.06,
+        start_scale=0.80,
     )
 
     return filters
@@ -1121,7 +1208,7 @@ def build_truth_punch_filters(
     if voice_duration < 18:
         return []
 
-    safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
+    safe_font_path = escape_ffmpeg_path(get_hud_font_file())
 
     incoming_truth_punch = clean_display_text(truth_punch_text, max_words=4)
     resolved_truth_punch = incoming_truth_punch or extract_truth_punch_text(guion)
@@ -1142,11 +1229,17 @@ def build_truth_punch_filters(
 
     enable = f"between(t\\,{start_time:.2f}\\,{end_time:.2f})"
 
+    panel_x = 58
+    panel_y = 492
+    panel_w = 604
+    panel_h = 220
+    panel_bottom = panel_y + panel_h
+
     filters = [
-        f"drawbox=x=44:y=450:w=632:h=260:color=black@0.50:t=fill:enable='{enable}'",
-        f"drawbox=x=44:y=450:w=6:h=260:color=0x00E5FF@0.84:t=fill:enable='{enable}'",
-        f"drawbox=x=44:y=450:w=632:h=3:color=0x00E5FF@0.36:t=fill:enable='{enable}'",
-        f"drawbox=x=44:y=707:w=632:h=3:color=0x00E5FF@0.30:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.46:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.78:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.30:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.25:t=fill:enable='{enable}'",
     ]
 
     first_start = start_time + 0.08
@@ -1154,28 +1247,28 @@ def build_truth_punch_filters(
 
     if len(safe_lines) == 1:
         line = safe_lines[0]
-        size = adjust_font_size_for_text(line, 112, min_size=78)
+        size = adjust_hud_font_size_for_width(line, 88, min_size=56, max_width=560)
         add_pop_drawtext(
             filters=filters,
             safe_font_path=safe_font_path,
             text=line,
             final_size=size,
             fontcolor="0x00E5FF",
-            center_y=580,
+            center_y=602,
             start_time=first_start,
             end_time=end_time,
-            borderw=7,
-            shadow=3,
-            overshoot_scale=1.06,
-            start_scale=0.84,
+            borderw=5,
+            shadow=2,
+            overshoot_scale=1.04,
+            start_scale=0.86,
             phase1_duration=0.12,
             phase2_duration=0.28,
         )
         return filters
 
     first, second = safe_lines[0], safe_lines[1]
-    first_size = adjust_font_size_for_text(first, 82, min_size=66)
-    second_size = adjust_font_size_for_text(second, 116, min_size=82)
+    first_size = adjust_hud_font_size_for_width(first, 62, min_size=46, max_width=540)
+    second_size = adjust_hud_font_size_for_width(second, 88, min_size=54, max_width=560)
 
     add_pop_drawtext(
         filters=filters,
@@ -1183,13 +1276,13 @@ def build_truth_punch_filters(
         text=first,
         final_size=first_size,
         fontcolor="0xF4F7FF",
-        center_y=535,
+        center_y=565,
         start_time=first_start,
         end_time=end_time,
-        borderw=5,
+        borderw=4,
         shadow=2,
-        overshoot_scale=1.04,
-        start_scale=0.86,
+        overshoot_scale=1.03,
+        start_scale=0.88,
         phase1_duration=0.12,
         phase2_duration=0.28,
     )
@@ -1200,13 +1293,13 @@ def build_truth_punch_filters(
         text=second,
         final_size=second_size,
         fontcolor="0x00E5FF",
-        center_y=635,
+        center_y=650,
         start_time=second_start,
         end_time=end_time,
-        borderw=8,
-        shadow=3,
-        overshoot_scale=1.06,
-        start_scale=0.84,
+        borderw=5,
+        shadow=2,
+        overshoot_scale=1.04,
+        start_scale=0.86,
         phase1_duration=0.12,
         phase2_duration=0.28,
     )
@@ -1228,7 +1321,7 @@ def build_cta_card_filters(
     if final_duration < 8:
         return []
 
-    safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
+    safe_font_path = escape_ffmpeg_path(get_hud_font_file())
 
     visual_lines = build_cta_visual_lines(call_to_action, hook=hook, guion=guion)
     safe_lines = [escape_drawtext_value(x) for x in visual_lines if x and x.strip()]
@@ -1248,57 +1341,57 @@ def build_cta_card_filters(
 
     line_count = len(safe_lines)
 
-    # CTA long-card mode. Larger panel and dynamic typography allow questions
-    # and two-option dilemmas to fit without weakening the CTA to 3-4 words.
-    panel_x = 30
-    panel_y = 685
-    panel_w = 660
-    panel_h = 470
+    # Dedicated long-CTA layout. It is intentionally calmer than the hook card:
+    # question/label above, decision/options below, always inside x=50..670 and y<=1080.
+    panel_x = 50
+    panel_y = 720
+    panel_w = 620
+    panel_h = 360
     panel_bottom = panel_y + panel_h
 
     filters = [
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.16:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.60:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w=6:h={panel_h}:color=0x00E5FF@0.88:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=3:color=0x00E5FF@0.40:t=fill:enable='{enable}'",
-        f"drawbox=x={panel_x}:y={panel_bottom - 3}:w={panel_w}:h=3:color=0x00E5FF@0.34:t=fill:enable='{enable}'",
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.14:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h={panel_h}:color=black@0.58:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w=5:h={panel_h}:color=0x00E5FF@0.82:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_y}:w={panel_w}:h=2:color=0x00E5FF@0.34:t=fill:enable='{enable}'",
+        f"drawbox=x={panel_x}:y={panel_bottom - 2}:w={panel_w}:h=2:color=0x00E5FF@0.28:t=fill:enable='{enable}'",
     ]
 
     if line_count == 1:
-        centers = [930]
-        base_sizes = [126]
-        min_sizes = [70]
+        centers = [900]
+        base_sizes = [82]
+        min_sizes = [44]
         colors = ["0x00E5FF"]
     elif line_count == 2:
-        centers = [845, 985]
-        base_sizes = [82, 112]
-        min_sizes = [58, 66]
+        centers = [845, 960]
+        base_sizes = [58, 76]
+        min_sizes = [42, 44]
         colors = ["0xF4F7FF", "0x00E5FF"]
     elif line_count == 3:
-        centers = [785, 910, 1030]
-        base_sizes = [68, 96, 96]
-        min_sizes = [50, 58, 58]
+        centers = [805, 910, 1015]
+        base_sizes = [52, 70, 70]
+        min_sizes = [38, 42, 42]
         colors = ["0xF4F7FF", "0x00E5FF", "0x00E5FF"]
     else:
-        centers = [748, 850, 952, 1054]
-        base_sizes = [58, 78, 78, 78]
-        min_sizes = [46, 50, 50, 50]
+        centers = [775, 860, 945, 1030]
+        base_sizes = [46, 62, 62, 62]
+        min_sizes = [36, 38, 38, 38]
         colors = ["0xF4F7FF", "0x00E5FF", "0x00E5FF", "0x00E5FF"]
 
     for index, line in enumerate(safe_lines):
         line_start = start_time + 0.06 + (index * 0.18)
-        line_size = adjust_font_size_for_text(
+        line_size = adjust_hud_font_size_for_width(
             line,
             base_size=base_sizes[index],
             min_size=min_sizes[index],
+            max_width=560,
+            char_width_ratio=0.72,
         )
 
-        # Keep the first line slightly calmer when it is a label/question,
-        # and make the final decision/options visually dominant.
-        borderw = 5 if index == 0 else 7
-        shadow = 2 if index == 0 else 3
-        overshoot = 1.05 if index == 0 else 1.09
-        start_scale = 0.84 if index == 0 else 0.78
+        borderw = 3 if index == 0 else 4
+        shadow = 2
+        overshoot = 1.03 if index == 0 else 1.05
+        start_scale = 0.86 if index == 0 else 0.82
 
         add_pop_drawtext(
             filters=filters,
@@ -1314,7 +1407,7 @@ def build_cta_card_filters(
             overshoot_scale=overshoot,
             start_scale=start_scale,
             phase1_duration=0.10,
-            phase2_duration=0.24,
+            phase2_duration=0.22,
         )
 
     return filters
@@ -1661,7 +1754,7 @@ def build_ass_dialogue_text(groups: list, active_index: int | None = None) -> st
 
         line_texts.append(" ".join(parts))
 
-    prefix = r"{\an2\fs76\bord4\shad0\fscx100\fscy100\fsp0" + ASS_WHITE + r"}"
+    prefix = r"{\an2\fs64\bord3\shad0\fscx100\fscy100\fsp0" + ASS_WHITE + r"}"
     return prefix + r"\N".join(line_texts)
 
 
@@ -1680,7 +1773,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Space Grotesk,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,285,1
+Style: Default,Space Grotesk,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,80,80,300,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1786,6 +1879,8 @@ def health():
         "status": "running",
         "font_exists": os.path.exists(RUNTIME_FONT_FILE),
         "font_path": RUNTIME_FONT_FILE,
+        "hud_font_exists": os.path.exists(RUNTIME_HUD_FONT_FILE),
+        "hud_font_path": get_hud_font_file(),
         "music_exists": os.path.exists(MUSIC_FILE),
         "music_path": MUSIC_FILE,
         "end_tail_duration": END_TAIL_DURATION,
@@ -1796,9 +1891,9 @@ def health():
         "hook_word_1_start": HOOK_WORD_1_START,
         "hook_word_2_start": HOOK_WORD_2_START,
         "hook_word_3_start": HOOK_WORD_3_START,
-        "hook_card_mode": "futuristic_hud_3_hit_impact",
-        "truth_punch_mode": "futuristic_hud_truth_punch",
-        "cta_card_mode": "futuristic_hud_long_polarizing_cta",
+        "hook_card_mode": "compact_archivo_black_hud_3_hit_impact",
+        "truth_punch_mode": "compact_archivo_black_truth_punch",
+        "cta_card_mode": "safe_area_archivo_black_long_polarizing_cta",
         "cta_detection_mode": "call_to_action_alignment_match_dynamic_long_cta",
         "reference_start_time": REFERENCE_START_TIME,
         "cta_card_duration": CTA_CARD_DURATION,
@@ -2262,9 +2357,9 @@ async def render_video(data: RenderRequest):
         "truth_punch_duration": TRUTH_PUNCH_DURATION,
         "truth_punch_start_time": truth_punch_window[0] if truth_punch_window else None,
         "truth_punch_end_time": truth_punch_window[1] if truth_punch_window else None,
-        "hook_card_mode": "futuristic_hud_3_hit_impact",
-        "truth_punch_mode": "futuristic_hud_truth_punch",
-        "cta_card_mode": "futuristic_hud_long_polarizing_cta",
+        "hook_card_mode": "compact_archivo_black_hud_3_hit_impact",
+        "truth_punch_mode": "compact_archivo_black_truth_punch",
+        "cta_card_mode": "safe_area_archivo_black_long_polarizing_cta",
         "cta_detection_mode": "call_to_action_alignment_match_dynamic_long_cta",
         "hook_word_1_start": HOOK_WORD_1_START,
         "hook_word_2_start": HOOK_WORD_2_START,
