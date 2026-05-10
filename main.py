@@ -57,8 +57,8 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 os.makedirs(CLIPS_DIR, exist_ok=True)
 
 APP_FONTS_DIR = "/app/fonts"
-APP_FONT_FILE = os.path.join(APP_FONTS_DIR, "BebasNeue-Regular.ttf")
-RUNTIME_FONT_FILE = os.path.join(FONTS_DIR, "BebasNeue-Regular.ttf")
+APP_FONT_FILE = os.path.join(APP_FONTS_DIR, "SpaceGrotesk.ttf")
+RUNTIME_FONT_FILE = os.path.join(FONTS_DIR, "SpaceGrotesk.ttf")
 
 if os.path.exists(APP_FONT_FILE) and not os.path.exists(RUNTIME_FONT_FILE):
     shutil.copy(APP_FONT_FILE, RUNTIME_FONT_FILE)
@@ -1540,7 +1540,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,76,&H00FFF7F4,&H00FFF7F4,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,285,1
+Style: Default,Space Grotesk,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,285,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
