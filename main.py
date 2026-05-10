@@ -1341,10 +1341,11 @@ def build_cta_card_filters(
 
     line_count = len(safe_lines)
 
-    # Dedicated long-CTA layout. It is intentionally calmer than the hook card:
-    # question/label above, decision/options below, always inside x=50..670 and y<=1080.
+    # Dedicated long-CTA layout. It is intentionally centered vertically,
+    # not top and not bottom. It stays inside safe margins while giving
+    # long questions/options enough room to breathe.
     panel_x = 50
-    panel_y = 720
+    panel_y = 460
     panel_w = 620
     panel_h = 360
     panel_bottom = panel_y + panel_h
@@ -1358,22 +1359,22 @@ def build_cta_card_filters(
     ]
 
     if line_count == 1:
-        centers = [900]
+        centers = [640]
         base_sizes = [82]
         min_sizes = [44]
         colors = ["0x00E5FF"]
     elif line_count == 2:
-        centers = [845, 960]
+        centers = [585, 695]
         base_sizes = [58, 76]
         min_sizes = [42, 44]
         colors = ["0xF4F7FF", "0x00E5FF"]
     elif line_count == 3:
-        centers = [805, 910, 1015]
+        centers = [540, 640, 740]
         base_sizes = [52, 70, 70]
         min_sizes = [38, 42, 42]
         colors = ["0xF4F7FF", "0x00E5FF", "0x00E5FF"]
     else:
-        centers = [775, 860, 945, 1030]
+        centers = [500, 595, 685, 780]
         base_sizes = [46, 62, 62, 62]
         min_sizes = [36, 38, 38, 38]
         colors = ["0xF4F7FF", "0x00E5FF", "0x00E5FF", "0x00E5FF"]
@@ -1893,7 +1894,7 @@ def health():
         "hook_word_3_start": HOOK_WORD_3_START,
         "hook_card_mode": "compact_archivo_black_hud_3_hit_impact",
         "truth_punch_mode": "compact_archivo_black_truth_punch",
-        "cta_card_mode": "safe_area_archivo_black_long_polarizing_cta",
+        "cta_card_mode": "centered_archivo_black_long_polarizing_cta",
         "cta_detection_mode": "call_to_action_alignment_match_dynamic_long_cta",
         "reference_start_time": REFERENCE_START_TIME,
         "cta_card_duration": CTA_CARD_DURATION,
@@ -2359,7 +2360,7 @@ async def render_video(data: RenderRequest):
         "truth_punch_end_time": truth_punch_window[1] if truth_punch_window else None,
         "hook_card_mode": "compact_archivo_black_hud_3_hit_impact",
         "truth_punch_mode": "compact_archivo_black_truth_punch",
-        "cta_card_mode": "safe_area_archivo_black_long_polarizing_cta",
+        "cta_card_mode": "centered_archivo_black_long_polarizing_cta",
         "cta_detection_mode": "call_to_action_alignment_match_dynamic_long_cta",
         "hook_word_1_start": HOOK_WORD_1_START,
         "hook_word_2_start": HOOK_WORD_2_START,
