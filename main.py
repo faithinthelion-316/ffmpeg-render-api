@@ -18,17 +18,39 @@ AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 VIDEO_DIR = os.path.join(BASE_DIR, "video")
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
 
+MUSIC_FILE = "/app/music/background.mp3"
+
 FPS = 24
 OUTPUT_WIDTH = 720
 OUTPUT_HEIGHT = 1280
 
 RI_RED_HEX = "0xFF1E1E"
 RI_WHITE_HEX = "0xFFFFFF"
-RI_BLACK_HEX = "black"
 
 # ASS colors use BGR format.
 ASS_WHITE = r"\c&HFFFFFF&"
 ASS_RED = r"\c&H1E1EFF&"
+
+# Visual tuning for Reglas Invisibles.
+# Header is intentionally slightly smaller than previous version.
+TITLE_FONT_SIZE = 52
+RULE_NUMBER_FONT_SIZE = 52
+TITLE_Y = 245
+RULE_NUMBER_Y = 308
+
+# Subtitles are intentionally larger for stronger mobile readability.
+SUBTITLE_FONT_SIZE = 76
+SUBTITLE_MARGIN_L = 70
+SUBTITLE_MARGIN_R = 70
+SUBTITLE_MARGIN_V = 360
+SUBTITLE_MAX_LINE_CHARS = 14
+SUBTITLE_MAX_WORDS = 5
+SUBTITLE_MAX_CUE_CHARS = 28
+
+# Audio tuning.
+SPEED_FACTOR = 1.18
+MUSIC_VOLUME = 0.09
+VOICE_VOLUME = 1.35
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
@@ -205,7 +227,7 @@ def build_words_from_alignment(alignment: dict) -> list:
     return words
 
 
-def group_words_into_cues(words: list, max_words: int = 5, max_chars: int = 30) -> list:
+def group_words_into_cues(words: list, max_words: int = SUBTITLE_MAX_WORDS, max_chars: int = SUBTITLE_MAX_CUE_CHARS) -> list:
     cues = []
     bucket = []
 
@@ -263,7 +285,7 @@ def group_words_into_cues(words: list, max_words: int = 5, max_chars: int = 30) 
     return cues
 
 
-def split_word_items_two_lines(word_items: list, max_line_chars: int = 16) -> list:
+def split_word_items_two_lines(word_items: list, max_line_chars: int = SUBTITLE_MAX_LINE_CHARS) -> list:
     if not word_items:
         return []
 
@@ -294,7 +316,7 @@ def split_word_items_two_lines(word_items: list, max_line_chars: int = 16) -> li
     return [word_items[:best_split_index], word_items[best_split_index:]]
 
 
-def build_line_groups(word_items: list, max_line_chars: int = 15) -> list:
+def build_line_groups(word_items: list, max_line_chars: int = SUBTITLE_MAX_LINE_CHARS) -> list:
     split_lines = split_word_items_two_lines(word_items, max_line_chars=max_line_chars)
     groups = []
     flat_index = 0
@@ -331,12 +353,12 @@ def build_ass_dialogue_text(groups: list, active_index: int | None = None) -> st
 
         line_texts.append(" ".join(parts))
 
-    prefix = r"{\an2\fs68\bord3\shad0\fscx100\fscy100\fsp0" + ASS_WHITE + r"}"
+    prefix = rf"{{\an2\fs{SUBTITLE_FONT_SIZE}\bord3\shad0\fscx100\fscy100\fsp0" + ASS_WHITE + r"}"
     return prefix + r"\N".join(line_texts)
 
 
 def write_ass_subtitles(subtitles_path: str, cues: list):
-    header = """[Script Info]
+    header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 720
 PlayResY: 1280
@@ -345,7 +367,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Bebas Neue,68,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,82,82,390,1
+Style: Default,Bebas Neue,{SUBTITLE_FONT_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,{SUBTITLE_MARGIN_L},{SUBTITLE_MARGIN_R},{SUBTITLE_MARGIN_V},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -360,7 +382,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             groups = build_line_groups(
                 cue.get("words", []),
-                max_line_chars=15,
+                max_line_chars=SUBTITLE_MAX_LINE_CHARS,
             )
 
             if not groups:
@@ -431,31 +453,94 @@ def build_title_filter(numero_regla: str) -> str:
         f"drawtext="
         f"fontfile={safe_font_path}:"
         f"text={safe_title}:"
-        f"fontsize=58:"
+        f"fontsize={TITLE_FONT_SIZE}:"
         f"fontcolor={RI_WHITE_HEX}:"
         f"borderw=2:"
         f"bordercolor=black:"
         f"shadowx=0:"
         f"shadowy=0:"
         f"x=(w-text_w)/2:"
-        f"y=245"
+        f"y={TITLE_Y}"
     )
 
     number_filter = (
         f"drawtext="
         f"fontfile={safe_font_path}:"
         f"text={safe_number}:"
-        f"fontsize=58:"
+        f"fontsize={RULE_NUMBER_FONT_SIZE}:"
         f"fontcolor={RI_RED_HEX}:"
         f"borderw=2:"
         f"bordercolor=black:"
         f"shadowx=0:"
         f"shadowy=0:"
         f"x=(w-text_w)/2:"
-        f"y=315"
+        f"y={RULE_NUMBER_Y}"
     )
 
     return f"{title_filter},{number_filter}"
+
+
+def build_final_audio_with_music(
+    job_id: str,
+    voice_audio_path: str,
+    voice_duration: float,
+) -> tuple[str, bool]:
+    """
+    Returns final_audio_path and whether music was used.
+
+    If /app/music/background.mp3 exists, it mixes the background music very low
+    under the voice. If it does not exist, it safely falls back to voice only.
+    """
+    final_audio_path = os.path.join(AUDIO_DIR, f"{job_id}_final.mp3")
+
+    if not os.path.exists(MUSIC_FILE):
+        return voice_audio_path, False
+
+    mix_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        "-stream_loop", "-1",
+        "-i", MUSIC_FILE,
+        "-i", voice_audio_path,
+        "-filter_complex",
+        (
+            f"[0:a]"
+            f"volume={MUSIC_VOLUME},"
+            f"atrim=0:{voice_duration:.2f},"
+            f"asetpts=PTS-STARTPTS[bg];"
+            f"[1:a]"
+            f"volume={VOICE_VOLUME},"
+            f"atrim=0:{voice_duration:.2f},"
+            f"asetpts=PTS-STARTPTS[voice];"
+            f"[bg][voice]"
+            f"amix=inputs=2:duration=shortest:dropout_transition=0,"
+            f"alimiter=limit=0.95[aout]"
+        ),
+        "-map", "[aout]",
+        "-c:a", "libmp3lame",
+        "-b:a", "192k",
+        "-ar", "44100",
+        "-ac", "2",
+        final_audio_path,
+    ]
+
+    mix_result = subprocess.run(mix_cmd, capture_output=True, text=True)
+
+    if mix_result.returncode != 0 or not os.path.exists(final_audio_path):
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Error mezclando música de fondo",
+                "music_path": MUSIC_FILE,
+                "returncode": mix_result.returncode,
+                "stdout": mix_result.stdout,
+                "stderr": mix_result.stderr,
+            },
+        )
+
+    return final_audio_path, True
 
 
 @app.get("/")
@@ -463,21 +548,29 @@ def health():
     return {
         "status": "running",
         "project": "Reglas Invisibles",
-        "render_style": "minimal_black_background",
+        "render_style": "minimal_black_background_with_low_background_music",
         "font_exists": os.path.exists(RUNTIME_FONT_FILE),
         "font_path": RUNTIME_FONT_FILE,
+        "music_exists": os.path.exists(MUSIC_FILE),
+        "music_path": MUSIC_FILE,
+        "music_volume": MUSIC_VOLUME,
+        "voice_volume": VOICE_VOLUME,
         "video_output": "720x1280",
+        "subtitle_font_size": SUBTITLE_FONT_SIZE,
+        "title_font_size": TITLE_FONT_SIZE,
+        "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
         "features": [
             "black_background",
             "top_title_regla_invisible",
             "red_rule_number",
             "dynamic_subtitles",
             "active_word_red",
-            "safe_margins",
+            "larger_safe_subtitles",
+            "smaller_header",
+            "background_music_optional",
             "no_hook_card",
             "no_truth_punch",
             "no_cta_card",
-            "no_music",
             "no_images",
             "no_external_video",
         ],
@@ -489,7 +582,10 @@ async def render_video(data: RenderRequest):
     if not os.path.exists(RUNTIME_FONT_FILE):
         raise HTTPException(
             status_code=500,
-            detail=f"No existe fuente en runtime: {RUNTIME_FONT_FILE}. Sube BebasNeue-Regular.ttf, ArchivoBlack-Regular.ttf o SpaceGrotesk.ttf a /app/fonts."
+            detail=(
+                f"No existe fuente en runtime: {RUNTIME_FONT_FILE}. "
+                "Sube BebasNeue-Regular.ttf, ArchivoBlack-Regular.ttf o SpaceGrotesk.ttf a /app/fonts."
+            ),
         )
 
     job_id = str(uuid.uuid4())
@@ -510,9 +606,6 @@ async def render_video(data: RenderRequest):
     with open(input_audio_path, "wb") as f:
         f.write(audio_bytes)
 
-    # Mantiene ritmo más rápido para Shorts/Reels.
-    speed_factor = 1.18
-
     normalize_cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -520,7 +613,7 @@ async def render_video(data: RenderRequest):
         "-y",
         "-i", input_audio_path,
         "-vn",
-        "-filter:a", f"atempo={speed_factor}",
+        "-filter:a", f"atempo={SPEED_FACTOR}",
         "-acodec", "libmp3lame",
         "-ar", "44100",
         "-ac", "2",
@@ -544,9 +637,17 @@ async def render_video(data: RenderRequest):
     voice_duration = round(get_audio_duration(voice_audio_path), 3)
     final_duration = voice_duration
 
-    adjusted_alignment = speed_up_alignment(data.normalized_alignment, speed_factor)
+    final_audio_path, music_used = build_final_audio_with_music(
+        job_id=job_id,
+        voice_audio_path=voice_audio_path,
+        voice_duration=voice_duration,
+    )
+
+    final_audio_duration = round(get_audio_duration(final_audio_path), 3)
+
+    adjusted_alignment = speed_up_alignment(data.normalized_alignment, SPEED_FACTOR)
     words = build_words_from_alignment(adjusted_alignment)
-    cues = group_words_into_cues(words, max_words=5, max_chars=30)
+    cues = group_words_into_cues(words)
 
     write_ass_subtitles(subtitles_path, cues)
 
@@ -567,7 +668,7 @@ async def render_video(data: RenderRequest):
         "-y",
         "-f", "lavfi",
         "-i", f"color=c=black:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT}:r={FPS}:d={final_duration:.2f}",
-        "-i", voice_audio_path,
+        "-i", final_audio_path,
         "-vf", video_filter,
         "-map", "0:v:0",
         "-map", "1:a:0",
@@ -594,6 +695,7 @@ async def render_video(data: RenderRequest):
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "video_filter_excerpt": video_filter[:2500],
+                "music_used": music_used,
             },
         )
 
@@ -610,10 +712,16 @@ async def render_video(data: RenderRequest):
         "video_url": f"/video/{job_id}.mp4",
         "video_url_full": f"{base_url}/video/{job_id}.mp4",
         "voice_duration": voice_duration,
+        "audio_duration": final_audio_duration,
         "final_duration": final_duration,
-        "render_mode": "reglas_invisibles_minimal_black_background",
+        "render_mode": "reglas_invisibles_minimal_black_background_music_larger_subtitles",
         "numero_regla": data.numero_regla,
         "cues_count": len(cues),
-        "speed_factor": speed_factor,
+        "speed_factor": SPEED_FACTOR,
+        "music_used": music_used,
+        "music_path": MUSIC_FILE,
+        "subtitle_font_size": SUBTITLE_FONT_SIZE,
+        "title_font_size": TITLE_FONT_SIZE,
+        "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
         "subtitles_mode_received": data.subtitles_mode,
     }
