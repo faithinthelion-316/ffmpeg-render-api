@@ -39,7 +39,7 @@ TITLE_Y = 245
 RULE_NUMBER_Y = 308
 
 # Subtitles are intentionally larger for stronger mobile readability.
-SUBTITLE_FONT_SIZE = 76
+SUBTITLE_FONT_SIZE = 86
 SUBTITLE_MARGIN_L = 70
 SUBTITLE_MARGIN_R = 70
 SUBTITLE_MARGIN_V = 360
