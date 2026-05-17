@@ -35,8 +35,11 @@ ASS_RED = r"\c&H1E1EFF&"
 # Header is intentionally slightly smaller than previous version.
 TITLE_FONT_SIZE = 52
 RULE_NUMBER_FONT_SIZE = 52
+HOOK_VISUAL_FONT_SIZE = 46
+HOOK_VISUAL_FONT_SIZE_SMALL = 40
 TITLE_Y = 245
 RULE_NUMBER_Y = 308
+HOOK_VISUAL_Y = 370
 
 # Subtitles are intentionally larger for stronger mobile readability.
 SUBTITLE_FONT_SIZE = 86
@@ -79,6 +82,7 @@ app.mount("/video", StaticFiles(directory=VIDEO_DIR), name="video")
 
 class RenderRequest(BaseModel):
     numero_regla: str = ""
+    hook_visual_text: str = ""
     guion: str
     audio_base64: str
     normalized_alignment: dict
@@ -114,6 +118,25 @@ def escape_drawtext_value(value: str) -> str:
         .replace("\r", " ")
     )
 
+
+
+
+def clean_hook_visual_text(value: str) -> str:
+    """
+    Fixed visual label burned into the video under the rule number.
+    Keep this short in the spreadsheet: ideally 3–5 words, e.g.
+    TU ROL SE REDUCE or PIERDES LA NARRATIVA.
+    """
+    text = str(value or "").strip().upper()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[^0-9A-ZÁÉÍÓÚÜÑ ]+", "", text)
+    return text[:42].strip()
+
+
+def get_hook_visual_font_size(text: str) -> int:
+    if len(text or "") > 26:
+        return HOOK_VISUAL_FONT_SIZE_SMALL
+    return HOOK_VISUAL_FONT_SIZE
 
 def seconds_to_ass_time(seconds: float) -> str:
     hours = int(seconds // 3600)
@@ -434,7 +457,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f.write(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}\n")
 
 
-def build_title_filter(numero_regla: str) -> str:
+def build_title_filter(numero_regla: str, hook_visual_text: str = "") -> str:
     safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
 
     numero = str(numero_regla or "").strip()
@@ -448,6 +471,7 @@ def build_title_filter(numero_regla: str) -> str:
 
     safe_title = escape_drawtext_value("REGLA INVISIBLE")
     safe_number = escape_drawtext_value(numero)
+    visual_text = clean_hook_visual_text(hook_visual_text)
 
     title_filter = (
         f"drawtext="
@@ -477,7 +501,29 @@ def build_title_filter(numero_regla: str) -> str:
         f"y={RULE_NUMBER_Y}"
     )
 
-    return f"{title_filter},{number_filter}"
+    filters = [title_filter, number_filter]
+
+    if visual_text:
+        safe_visual_text = escape_drawtext_value(visual_text)
+        visual_font_size = get_hook_visual_font_size(visual_text)
+
+        hook_visual_filter = (
+            f"drawtext="
+            f"fontfile={safe_font_path}:"
+            f"text={safe_visual_text}:"
+            f"fontsize={visual_font_size}:"
+            f"fontcolor={RI_WHITE_HEX}:"
+            f"borderw=2:"
+            f"bordercolor=black:"
+            f"shadowx=0:"
+            f"shadowy=0:"
+            f"x=(w-text_w)/2:"
+            f"y={HOOK_VISUAL_Y}"
+        )
+
+        filters.append(hook_visual_filter)
+
+    return ",".join(filters)
 
 
 def build_final_audio_with_music(
@@ -559,10 +605,13 @@ def health():
         "subtitle_font_size": SUBTITLE_FONT_SIZE,
         "title_font_size": TITLE_FONT_SIZE,
         "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
+        "hook_visual_font_size": HOOK_VISUAL_FONT_SIZE,
+        "hook_visual_y": HOOK_VISUAL_Y,
         "features": [
             "black_background",
             "top_title_regla_invisible",
             "red_rule_number",
+            "fixed_hook_visual_text",
             "dynamic_subtitles",
             "active_word_red",
             "larger_safe_subtitles",
@@ -654,7 +703,7 @@ async def render_video(data: RenderRequest):
     safe_subtitles_path = escape_ffmpeg_path(subtitles_path)
     safe_fonts_dir = escape_ffmpeg_path(FONTS_DIR)
 
-    title_filter = build_title_filter(data.numero_regla)
+    title_filter = build_title_filter(data.numero_regla, data.hook_visual_text)
 
     video_filter = (
         f"{title_filter},"
@@ -714,8 +763,9 @@ async def render_video(data: RenderRequest):
         "voice_duration": voice_duration,
         "audio_duration": final_audio_duration,
         "final_duration": final_duration,
-        "render_mode": "reglas_invisibles_minimal_black_background_music_larger_subtitles",
+        "render_mode": "reglas_invisibles_minimal_black_background_music_fixed_visual_label",
         "numero_regla": data.numero_regla,
+        "hook_visual_text": clean_hook_visual_text(data.hook_visual_text),
         "cues_count": len(cues),
         "speed_factor": SPEED_FACTOR,
         "music_used": music_used,
@@ -723,5 +773,7 @@ async def render_video(data: RenderRequest):
         "subtitle_font_size": SUBTITLE_FONT_SIZE,
         "title_font_size": TITLE_FONT_SIZE,
         "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
+        "hook_visual_font_size": HOOK_VISUAL_FONT_SIZE,
+        "hook_visual_y": HOOK_VISUAL_Y,
         "subtitles_mode_received": data.subtitles_mode,
     }
