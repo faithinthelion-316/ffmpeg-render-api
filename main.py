@@ -31,21 +31,26 @@ RI_WHITE_HEX = "0xFFFFFF"
 ASS_WHITE = r"\c&HFFFFFF&"
 ASS_RED = r"\c&H1E1EFF&"
 
-# Visual tuning for Reglas Invisibles.
-# Header is intentionally slightly smaller than previous version.
-TITLE_FONT_SIZE = 52
-RULE_NUMBER_FONT_SIZE = 52
-HOOK_VISUAL_FONT_SIZE = 46
-HOOK_VISUAL_FONT_SIZE_SMALL = 40
-TITLE_Y = 245
-RULE_NUMBER_Y = 308
-HOOK_VISUAL_Y = 370
+# Visual tuning.
+# Keep the visual system restrained:
+# - white for headers and fixed hook text
+# - red only for rule number and active subtitle word
+TITLE_FONT_SIZE = 38
+RULE_NUMBER_FONT_SIZE = 44
+HOOK_VISUAL_FONT_SIZE = 68
+HOOK_VISUAL_FONT_SIZE_SMALL = 60
+TITLE_Y = 190
+RULE_NUMBER_Y = 238
+HOOK_VISUAL_Y = 320
+HOOK_VISUAL_LINE_GAP = 8
+HOOK_VISUAL_MAX_CHARS = 42
+HOOK_VISUAL_MAX_LINE_CHARS = 16
 
-# Subtitles are intentionally larger for stronger mobile readability.
+# Subtitles.
 SUBTITLE_FONT_SIZE = 86
 SUBTITLE_MARGIN_L = 70
 SUBTITLE_MARGIN_R = 70
-SUBTITLE_MARGIN_V = 440
+SUBTITLE_MARGIN_V = 370
 SUBTITLE_MAX_LINE_CHARS = 14
 SUBTITLE_MAX_WORDS = 5
 SUBTITLE_MAX_CUE_CHARS = 28
@@ -119,24 +124,49 @@ def escape_drawtext_value(value: str) -> str:
     )
 
 
-
-
 def clean_hook_visual_text(value: str) -> str:
-    """
-    Fixed visual label burned into the video under the rule number.
-    Keep this short in the spreadsheet: ideally 3–5 words, e.g.
-    TU ROL SE REDUCE or PIERDES LA NARRATIVA.
-    """
     text = str(value or "").strip().upper()
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"[^0-9A-ZÁÉÍÓÚÜÑ ]+", "", text)
-    return text[:42].strip()
+    return text[:HOOK_VISUAL_MAX_CHARS].strip()
 
 
 def get_hook_visual_font_size(text: str) -> int:
-    if len(text or "") > 26:
+    if len(text or "") > 24:
         return HOOK_VISUAL_FONT_SIZE_SMALL
     return HOOK_VISUAL_FONT_SIZE
+
+
+def split_hook_visual_text(value: str, max_line_chars: int = HOOK_VISUAL_MAX_LINE_CHARS) -> list[str]:
+    text = clean_hook_visual_text(value)
+    if not text:
+        return []
+
+    words = text.split()
+    if len(words) <= 2 and len(text) <= max_line_chars:
+        return [text]
+
+    best_split_index = None
+    best_score = None
+
+    for i in range(1, len(words)):
+        line1 = " ".join(words[:i]).strip()
+        line2 = " ".join(words[i:]).strip()
+        if not line1 or not line2:
+            continue
+        if len(line1) > max_line_chars or len(line2) > max_line_chars:
+            continue
+        score = abs(len(line1) - len(line2))
+        if best_score is None or score < best_score:
+            best_score = score
+            best_split_index = i
+
+    if best_split_index is None:
+        midpoint = max(1, len(words) // 2)
+        return [" ".join(words[:midpoint]), " ".join(words[midpoint:])]
+
+    return [" ".join(words[:best_split_index]), " ".join(words[best_split_index:])]
+
 
 def seconds_to_ass_time(seconds: float) -> str:
     hours = int(seconds // 3600)
@@ -471,7 +501,8 @@ def build_title_filter(numero_regla: str, hook_visual_text: str = "") -> str:
 
     safe_title = escape_drawtext_value("REGLA INVISIBLE")
     safe_number = escape_drawtext_value(numero)
-    visual_text = clean_hook_visual_text(hook_visual_text)
+    visual_lines = split_hook_visual_text(hook_visual_text)
+    visual_font_size = get_hook_visual_font_size(" ".join(visual_lines))
 
     title_filter = (
         f"drawtext="
@@ -503,25 +534,40 @@ def build_title_filter(numero_regla: str, hook_visual_text: str = "") -> str:
 
     filters = [title_filter, number_filter]
 
-    if visual_text:
-        safe_visual_text = escape_drawtext_value(visual_text)
-        visual_font_size = get_hook_visual_font_size(visual_text)
-
-        hook_visual_filter = (
-            f"drawtext="
-            f"fontfile={safe_font_path}:"
-            f"text={safe_visual_text}:"
-            f"fontsize={visual_font_size}:"
-            f"fontcolor={RI_WHITE_HEX}:"
-            f"borderw=2:"
-            f"bordercolor=black:"
-            f"shadowx=0:"
-            f"shadowy=0:"
-            f"x=(w-text_w)/2:"
-            f"y={HOOK_VISUAL_Y}"
-        )
-
-        filters.append(hook_visual_filter)
+    if visual_lines:
+        if len(visual_lines) == 1:
+            safe_visual_text = escape_drawtext_value(visual_lines[0])
+            filters.append(
+                f"drawtext="
+                f"fontfile={safe_font_path}:"
+                f"text={safe_visual_text}:"
+                f"fontsize={visual_font_size}:"
+                f"fontcolor={RI_WHITE_HEX}:"
+                f"borderw=2:"
+                f"bordercolor=black:"
+                f"shadowx=0:"
+                f"shadowy=0:"
+                f"x=(w-text_w)/2:"
+                f"y={HOOK_VISUAL_Y}"
+            )
+        else:
+            line1 = escape_drawtext_value(visual_lines[0])
+            line2 = escape_drawtext_value(visual_lines[1])
+            line2_y = HOOK_VISUAL_Y + visual_font_size + HOOK_VISUAL_LINE_GAP
+            for text_value, y_value in [(line1, HOOK_VISUAL_Y), (line2, line2_y)]:
+                filters.append(
+                    f"drawtext="
+                    f"fontfile={safe_font_path}:"
+                    f"text={text_value}:"
+                    f"fontsize={visual_font_size}:"
+                    f"fontcolor={RI_WHITE_HEX}:"
+                    f"borderw=2:"
+                    f"bordercolor=black:"
+                    f"shadowx=0:"
+                    f"shadowy=0:"
+                    f"x=(w-text_w)/2:"
+                    f"y={y_value}"
+                )
 
     return ",".join(filters)
 
@@ -531,12 +577,6 @@ def build_final_audio_with_music(
     voice_audio_path: str,
     voice_duration: float,
 ) -> tuple[str, bool]:
-    """
-    Returns final_audio_path and whether music was used.
-
-    If /app/music/background.mp3 exists, it mixes the background music very low
-    under the voice. If it does not exist, it safely falls back to voice only.
-    """
     final_audio_path = os.path.join(AUDIO_DIR, f"{job_id}_final.mp3")
 
     if not os.path.exists(MUSIC_FILE):
@@ -594,7 +634,7 @@ def health():
     return {
         "status": "running",
         "project": "Reglas Invisibles",
-        "render_style": "minimal_black_background_with_low_background_music",
+        "render_style": "minimal_black_background_with_prominent_fixed_hook_text",
         "font_exists": os.path.exists(RUNTIME_FONT_FILE),
         "font_path": RUNTIME_FONT_FILE,
         "music_exists": os.path.exists(MUSIC_FILE),
@@ -603,6 +643,7 @@ def health():
         "voice_volume": VOICE_VOLUME,
         "video_output": "720x1280",
         "subtitle_font_size": SUBTITLE_FONT_SIZE,
+        "subtitle_margin_v": SUBTITLE_MARGIN_V,
         "title_font_size": TITLE_FONT_SIZE,
         "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
         "hook_visual_font_size": HOOK_VISUAL_FONT_SIZE,
@@ -611,15 +652,12 @@ def health():
             "black_background",
             "top_title_regla_invisible",
             "red_rule_number",
-            "fixed_hook_visual_text",
+            "fixed_hook_visual_text_prominent_white",
+            "two_line_hook_visual_split",
             "dynamic_subtitles",
             "active_word_red",
-            "larger_safe_subtitles",
-            "smaller_header",
+            "subtitle_margin_v_370",
             "background_music_optional",
-            "no_hook_card",
-            "no_truth_punch",
-            "no_cta_card",
             "no_images",
             "no_external_video",
         ],
@@ -763,14 +801,14 @@ async def render_video(data: RenderRequest):
         "voice_duration": voice_duration,
         "audio_duration": final_audio_duration,
         "final_duration": final_duration,
-        "render_mode": "reglas_invisibles_minimal_black_background_music_fixed_visual_label",
+        "render_mode": "reglas_invisibles_prominent_hook_white_subtitles_margin_370",
         "numero_regla": data.numero_regla,
-        "hook_visual_text": clean_hook_visual_text(data.hook_visual_text),
         "cues_count": len(cues),
         "speed_factor": SPEED_FACTOR,
         "music_used": music_used,
         "music_path": MUSIC_FILE,
         "subtitle_font_size": SUBTITLE_FONT_SIZE,
+        "subtitle_margin_v": SUBTITLE_MARGIN_V,
         "title_font_size": TITLE_FONT_SIZE,
         "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
         "hook_visual_font_size": HOOK_VISUAL_FONT_SIZE,
