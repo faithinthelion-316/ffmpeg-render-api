@@ -24,12 +24,12 @@ FPS = 24
 OUTPUT_WIDTH = 720
 OUTPUT_HEIGHT = 1280
 
-RI_RED_HEX = "0xFF1E1E"
+RI_RED_HEX = "0xFE5F03"
 RI_WHITE_HEX = "0xFFFFFF"
 
 # ASS colors use BGR format.
 ASS_WHITE = r"\c&HFFFFFF&"
-ASS_RED = r"\c&H1E1EFF&"
+ASS_RED = r"\c&H035FFE&"
 
 # Visual tuning.
 # Keep the visual system restrained:
