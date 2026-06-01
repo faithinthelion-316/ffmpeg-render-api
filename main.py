@@ -46,6 +46,16 @@ HOOK_VISUAL_LINE_GAP = 8
 HOOK_VISUAL_MAX_CHARS = 42
 HOOK_VISUAL_MAX_LINE_CHARS = 16
 
+# CTA visual.
+# This is intentionally white and mid-low, not bottom-aligned,
+# to avoid competing with platform UI and to preserve the channel visual system.
+CTA_VISUAL_FONT_SIZE = 46
+CTA_VISUAL_Y = 690
+CTA_VISUAL_LINE_GAP = 4
+CTA_VISUAL_SECONDS = 6
+CTA_VISUAL_COLOR_HEX = RI_WHITE_HEX
+CTA_VISUAL_DEFAULT_TEXT = "100 FRASES GRATIS|EN LA BIO"
+
 # Subtitles.
 SUBTITLE_FONT_SIZE = 86
 SUBTITLE_MARGIN_L = 70
@@ -92,6 +102,9 @@ class RenderRequest(BaseModel):
     audio_base64: str
     normalized_alignment: dict
     subtitles_mode: str = "dynamic"
+    cta_visual_mode: str = "none"
+    cta_visual_text: str = ""
+    cta_test_group: str = ""
 
 
 def escape_ffmpeg_path(path: str) -> str:
@@ -166,6 +179,27 @@ def split_hook_visual_text(value: str, max_line_chars: int = HOOK_VISUAL_MAX_LIN
         return [" ".join(words[:midpoint]), " ".join(words[midpoint:])]
 
     return [" ".join(words[:best_split_index]), " ".join(words[best_split_index:])]
+
+
+def clean_cta_visual_text(value: str) -> str:
+    text = str(value or "").strip().upper()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[^0-9A-ZÁÉÍÓÚÜÑ |]+", "", text)
+    return text[:60].strip()
+
+
+def split_cta_visual_text(value: str) -> list[str]:
+    text = clean_cta_visual_text(value)
+
+    if not text:
+        text = CTA_VISUAL_DEFAULT_TEXT
+
+    if "|" in text:
+        lines = [line.strip() for line in text.split("|") if line.strip()]
+    else:
+        lines = [text]
+
+    return lines[:2]
 
 
 def seconds_to_ass_time(seconds: float) -> str:
@@ -572,6 +606,50 @@ def build_title_filter(numero_regla: str, hook_visual_text: str = "") -> str:
     return ",".join(filters)
 
 
+def build_cta_visual_filter(
+    cta_visual_mode: str,
+    cta_visual_text: str,
+    final_duration: float,
+) -> str:
+    mode = str(cta_visual_mode or "").strip().lower()
+
+    if mode not in ["spoken_visual", "visual_only"]:
+        return ""
+
+    safe_font_path = escape_ffmpeg_path(RUNTIME_FONT_FILE)
+    lines = split_cta_visual_text(cta_visual_text)
+
+    if not lines:
+        return ""
+
+    duration = max(0.0, float(final_duration or 0))
+    start_time = max(0.0, duration - CTA_VISUAL_SECONDS)
+    end_time = duration
+
+    filters = []
+
+    for index, line in enumerate(lines):
+        safe_text = escape_drawtext_value(line)
+        y_value = CTA_VISUAL_Y + index * (CTA_VISUAL_FONT_SIZE + CTA_VISUAL_LINE_GAP)
+
+        filters.append(
+            f"drawtext="
+            f"fontfile={safe_font_path}:"
+            f"text={safe_text}:"
+            f"fontsize={CTA_VISUAL_FONT_SIZE}:"
+            f"fontcolor={CTA_VISUAL_COLOR_HEX}:"
+            f"borderw=2:"
+            f"bordercolor=black:"
+            f"shadowx=0:"
+            f"shadowy=0:"
+            f"x=(w-text_w)/2:"
+            f"y={y_value}:"
+            f"enable='between(t,{start_time:.2f},{end_time:.2f})'"
+        )
+
+    return ",".join(filters)
+
+
 def build_final_audio_with_music(
     job_id: str,
     voice_audio_path: str,
@@ -648,12 +726,16 @@ def health():
         "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
         "hook_visual_font_size": HOOK_VISUAL_FONT_SIZE,
         "hook_visual_y": HOOK_VISUAL_Y,
+        "cta_visual_font_size": CTA_VISUAL_FONT_SIZE,
+        "cta_visual_y": CTA_VISUAL_Y,
+        "cta_visual_seconds": CTA_VISUAL_SECONDS,
         "features": [
             "black_background",
             "top_title_regla_invisible",
             "red_rule_number",
             "fixed_hook_visual_text_prominent_white",
             "two_line_hook_visual_split",
+            "cta_visual_optional_white_mid_low",
             "dynamic_subtitles",
             "active_word_red",
             "subtitle_margin_v_370",
@@ -743,10 +825,20 @@ async def render_video(data: RenderRequest):
 
     title_filter = build_title_filter(data.numero_regla, data.hook_visual_text)
 
-    video_filter = (
-        f"{title_filter},"
-        f"subtitles={safe_subtitles_path}:fontsdir={safe_fonts_dir}"
+    cta_visual_filter = build_cta_visual_filter(
+        cta_visual_mode=data.cta_visual_mode,
+        cta_visual_text=data.cta_visual_text,
+        final_duration=final_duration,
     )
+
+    video_filters = [title_filter]
+
+    if cta_visual_filter:
+        video_filters.append(cta_visual_filter)
+
+    video_filters.append(f"subtitles={safe_subtitles_path}:fontsdir={safe_fonts_dir}")
+
+    video_filter = ",".join(video_filters)
 
     ffmpeg_cmd = [
         "ffmpeg",
@@ -813,5 +905,11 @@ async def render_video(data: RenderRequest):
         "rule_number_font_size": RULE_NUMBER_FONT_SIZE,
         "hook_visual_font_size": HOOK_VISUAL_FONT_SIZE,
         "hook_visual_y": HOOK_VISUAL_Y,
+        "cta_visual_mode_received": data.cta_visual_mode,
+        "cta_visual_text_received": data.cta_visual_text,
+        "cta_test_group_received": data.cta_test_group,
+        "cta_visual_font_size": CTA_VISUAL_FONT_SIZE,
+        "cta_visual_y": CTA_VISUAL_Y,
+        "cta_visual_seconds": CTA_VISUAL_SECONDS,
         "subtitles_mode_received": data.subtitles_mode,
     }
