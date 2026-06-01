@@ -49,7 +49,7 @@ HOOK_VISUAL_MAX_LINE_CHARS = 16
 # CTA visual.
 # Minimal overlay used only when cta_visual_mode is spoken_visual or visual_only.
 CTA_VISUAL_FONT_SIZE = 46
-CTA_VISUAL_Y = 600
+CTA_VISUAL_Y = 610
 CTA_VISUAL_LINE_GAP = 4
 CTA_VISUAL_SECONDS = 6
 CTA_VISUAL_COLOR_HEX = RI_WHITE_HEX
